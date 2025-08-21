@@ -1,16 +1,14 @@
-# appcliente
+# App Cliente
 
-A new Flutter project.
+Esse software será responsável de permitir que os clientes faça todas as interações
 
-## Getting Started
+## Principais Funcionalidades
 
-This project is a starting point for a Flutter application.
+* Ter um cardápio com todos os produtos.
+* Ter telas individuais para cada produto.
+* consulta da conta com todos os produtos consumidos, incluindo a possibilidade do cliente adicionar 10% como taxa de serviço.
+* O método de pagamento vai ser o pix.
+* Catraca na entrada e saída do restaurante.
+  * Liberação da entrada e entrega de comanda.
+  * Validação na saída, que só é autorizada após o pagamento da conta.
 
-A few resources to get you started if this is your first Flutter project:
-
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
