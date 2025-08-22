@@ -12,13 +12,13 @@ class PaginaConta extends StatefulWidget {
 
 class _PaginaConta extends State<PaginaConta> {
   final List<Item> items = [
-    Item('Hambúrguer', 2, 21.90),
-    Item('Batata média', 1, 12.00),
-    Item('Suco de laranja', 3, 8.50),
-    Item('Brownie', 1, 9.90),
-    Item('Milk-shake', 1, 19.90),
-    Item('Café expresso', 2, 6.50),
-    Item('Pizza brotinho', 1, 25.00),
+    Item('Hambúrguer', 2, 21.90, "images/bruschetta.jpg", "teste"),
+    Item('Batata média', 1, 12.00, "images/bruschetta.jpg", "teste"),
+    Item('Suco de laranja', 3, 8.50, "images/bruschetta.jpg", "teste"),
+    Item('Brownie', 1, 9.90, "images/bruschetta.jpg", "teste"),
+    Item('Milk-shake', 1, 19.90, "images/bruschetta.jpg", "teste"),
+    Item('Café expresso', 2, 6.50, "images/bruschetta.jpg", "teste"),
+    Item('Pizza brotinho', 1, 25.00, "images/bruschetta.jpg", "teste"),
   ];
 
   bool addService = true;
