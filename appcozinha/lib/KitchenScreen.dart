@@ -7,11 +7,17 @@ class Pedido {
   final String nomeProduto;
   final int mesa;
   final DateTime startTime;
+  final String descricao;
+  bool iniciado;
+  bool entregue;
 
   Pedido({
     required this.nomeProduto,
     required this.mesa,
     required this.startTime,
+    this.descricao = "Sem observações",
+    this.iniciado = false,
+    this.entregue = false,
   });
 }
 
@@ -37,11 +43,14 @@ class _KitchenScreenState extends State<KitchenScreen> {
 
     // Mock de pedidos
     pedidos = List.generate(
-      20,
+      10,
           (i) => Pedido(
         nomeProduto: i % 2 == 0 ? "Porção Batata Frita" : "Hamburguer",
         mesa: i + 1,
         startTime: DateTime.now(),
+        descricao: i % 2 == 0
+            ? "Sem sal, adicional de queijo"
+            : "Ponto médio, sem cebola",
       ),
     );
 
@@ -63,11 +72,12 @@ class _KitchenScreenState extends State<KitchenScreen> {
   void filtrarPedidos(String query) {
     setState(() {
       if (query.isEmpty) {
-        pedidosFiltrados = List.from(pedidos);
+        pedidosFiltrados = pedidos.where((p) => !p.entregue).toList();
       } else {
         pedidosFiltrados = pedidos
             .where((p) =>
-            p.nomeProduto.toLowerCase().contains(query.toLowerCase()))
+        p.nomeProduto.toLowerCase().contains(query.toLowerCase()) &&
+            !p.entregue)
             .toList();
       }
     });
@@ -78,6 +88,100 @@ class _KitchenScreenState extends State<KitchenScreen> {
     String twoDigits(int n) => n.toString().padLeft(2, "0");
     return "${twoDigits(d.inMinutes)}:${twoDigits(d.inSeconds % 60)}";
   }
+
+  // Abre o modal com detalhes
+  // Abre o modal com detalhes
+  void mostrarDetalhes(Pedido pedido) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            // Inicia um timer para atualizar a janela enquanto aberta
+            Timer.periodic(const Duration(seconds: 1), (timer) {
+              if (Navigator.of(context).canPop() == false) {
+                timer.cancel(); // cancela quando o dialog fecha
+              } else {
+                setStateDialog(() {});
+              }
+            });
+
+            return Dialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Cronômetro
+                    Text(
+                      formatDuration(DateTime.now().difference(pedido.startTime)),
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.red,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Nome do produto
+                    Text(
+                      pedido.nomeProduto,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 10),
+
+                    // Descrição
+                    Text(
+                      pedido.descricao,
+                      style: const TextStyle(fontSize: 16),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Botão dinâmico
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor:
+                        pedido.iniciado ? Colors.green : Colors.blue,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        minimumSize: const Size(double.infinity, 45),
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          if (!pedido.iniciado) {
+                            pedido.iniciado = true;
+                          } else {
+                            pedido.entregue = true;
+                          }
+                          Navigator.pop(context); // fecha modal
+                          filtrarPedidos(searchController.text);
+                        });
+                      },
+                      child: Text(
+                        pedido.iniciado ? "Entregar pedido" : "Iniciar preparo",
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -131,41 +235,47 @@ class _KitchenScreenState extends State<KitchenScreen> {
                   final pedido = pedidosFiltrados[index];
                   final elapsed = DateTime.now().difference(pedido.startTime);
 
-                  return Card(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      side: const BorderSide(color: Colors.black, width: 1),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(6),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            formatDuration(elapsed),
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.red,
-                            ),
-                          ),
-                          Expanded(
-                            child: Center(
-                              child: Text(
-                                pedido.nomeProduto,
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(fontSize: 13),
+                  return GestureDetector(
+                    onTap: () => mostrarDetalhes(pedido),
+                    child: Card(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        side: BorderSide(
+                          color: pedido.iniciado ? Colors.green : Colors.black,
+                          width: 2,
+                        ),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(6),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              formatDuration(elapsed),
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.red,
                               ),
                             ),
-                          ),
-                          Text(
-                            "Mesa: ${pedido.mesa}",
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
+                            Expanded(
+                              child: Center(
+                                child: Text(
+                                  pedido.nomeProduto,
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(fontSize: 13),
+                                ),
+                              ),
                             ),
-                          ),
-                        ],
+                            Text(
+                              "Mesa: ${pedido.mesa}",
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   );
