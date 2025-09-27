@@ -1,9 +1,12 @@
-// Pagina_Cardapio.dart
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:appgarcon/Paginas/Pagina_Cardapio.dart';
 import 'package:appgarcon/Paginas/Pagina_Conta.dart';
 import 'package:water_drop_nav_bar/water_drop_nav_bar.dart';
+
+// Importa a nova página de pedidos
+import 'package:appgarcon/Paginas/Pagina_Pedidos_Garcom.dart';
 
 class MyHomePage extends StatefulWidget {
   const MyHomePage({Key? key}) : super(key: key);
@@ -34,22 +37,15 @@ class _MyHomePageState extends State<MyHomePage> {
         body: PageView(
           physics: const NeverScrollableScrollPhysics(),
           controller: pageController,
-          children: <Widget>[
-            const PaginaCardapio(),
-            const PaginaConta(),
-            Container(
-              alignment: Alignment.center,
-              child: Icon(
-                Icons.email_rounded,
-                size: 56,
-                color: Colors.green[400],
-              ),
-            ),
+          children: const <Widget>[
+            PaginaCardapio(),
+            PaginaConta(),
+            PaginaPedidosGarcom(), // <- nova página
           ],
         ),
         bottomNavigationBar: WaterDropNavBar(
           backgroundColor: navigationBarColor,
-          waterDropColor: Color(0xFF448AFF),
+          waterDropColor: const Color(0xFF448AFF),
           onItemSelected: (int index) {
             setState(() {
               selectedIndex = index;
@@ -70,9 +66,15 @@ class _MyHomePageState extends State<MyHomePage> {
               filledIcon: Icons.paid,
               outlinedIcon: Icons.paid_outlined,
             ),
+            BarItem(
+              filledIcon: Icons.receipt_long,
+              outlinedIcon: Icons.receipt_outlined,
+            ),
           ],
+
         ),
       ),
     );
   }
 }
+

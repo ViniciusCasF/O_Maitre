@@ -2,7 +2,8 @@ import 'package:appgarcon/Paginas/Pagina_Produto.dart';
 import 'package:flutter/material.dart';
 import '../Widget/Barra_pesquisa.dart';
 import '../Widget/ProdutoCard.dart';
-import 'Pagina_Produto.dart';
+import 'Pagina_Pedidos.dart'; // para abrir os pedidos
+import '../Modelos/order_manager.dart'; // para acessar os itens do pedido
 
 class PaginaCardapio extends StatefulWidget {
   const PaginaCardapio({super.key});
@@ -14,6 +15,8 @@ class PaginaCardapio extends StatefulWidget {
 class _PaginaCardapio extends State<PaginaCardapio> {
   String searchText = '';
   String filtroAtivo = '';
+
+  final OrderManager order = OrderManager();
 
   final List<String> filtros = [
     'Entradas',
@@ -149,7 +152,9 @@ class _PaginaCardapio extends State<PaginaCardapio> {
                             descricao: produto['descricao'],
                           ),
                         ),
-                      );
+                      ).then((_) {
+                        setState(() {}); // força rebuild para mostrar barra
+                      });
                     },
                     child: ProdutoCard(
                       nome: produto['nome'],
@@ -162,6 +167,45 @@ class _PaginaCardapio extends State<PaginaCardapio> {
             ),
           ],
         ),
+      ),
+
+      // Barra do pedido (fica acima da nav-bar)
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (order.items.isNotEmpty)
+            Container(
+              color: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      "Pedido aberto: ${order.items.length} item(s)",
+                      style: const TextStyle(
+                          fontSize: 15, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  ElevatedButton(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const PaginaPedidos()),
+                      ).then((_) {
+                        setState(() {}); // atualiza quando volta
+                      });
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF448AFF),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 12),
+                    ),
+                    child: const Text("Finalizar pedido"),
+                  ),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }
