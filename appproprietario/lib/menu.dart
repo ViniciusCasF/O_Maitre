@@ -17,25 +17,22 @@ class MenuWidget extends StatelessWidget {
         children: [
           const DrawerHeader(
             decoration: BoxDecoration(color: Colors.blue),
-            child: Text("Menu", style: TextStyle(color: Colors.white, fontSize: 18)),
+            child: Text(
+              "Menu do Proprietário",
+              style: TextStyle(color: Colors.white, fontSize: 20),
+            ),
           ),
           ListTile(
-            leading: const Icon(Icons.edit),
-            title: const Text("CRUD"),
+            leading: const Icon(Icons.home),
+            title: const Text("Tela de Teste"),
             selected: selectedIndex == 0,
-            onTap: () => onSelectPage(0),
+            onTap: () => onSelectPage(0), // chama a função passando o índice
           ),
           ListTile(
-            leading: const Icon(Icons.bar_chart),
-            title: const Text("Relatórios"),
+            leading: const Icon(Icons.table_bar),
+            title: const Text("Mesas & Garçons"),
             selected: selectedIndex == 1,
-            onTap: () => onSelectPage(1),
-          ),
-          ListTile(
-            leading: const Icon(Icons.settings),
-            title: const Text("Configurações"),
-            selected: selectedIndex == 2,
-            onTap: () => onSelectPage(2),
+            onTap: () => onSelectPage(1), // chama a função passando o índice
           ),
         ],
       ),

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'tela_controle.dart';
+import 'proprietario_screen.dart';
 
 void main() {
   runApp(const MyApp());

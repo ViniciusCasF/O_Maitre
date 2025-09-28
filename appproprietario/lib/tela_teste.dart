@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-class telaTeste extends StatelessWidget {
-  const telaTeste({super.key});
+class TelaTeste extends StatelessWidget {
+  const TelaTeste({super.key});
 
   @override
   Widget build(BuildContext context) {
