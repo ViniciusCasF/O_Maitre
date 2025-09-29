@@ -34,6 +34,12 @@ class MenuWidget extends StatelessWidget {
             selected: selectedIndex == 1,
             onTap: () => onSelectPage(1), // chama a função passando o índice
           ),
+          ListTile(
+            leading: const Icon(Icons.inventory),
+            title: const Text("Estoque"),
+            selected: selectedIndex == 2,
+            onTap: () => onSelectPage(2),
+          ),
         ],
       ),
     );

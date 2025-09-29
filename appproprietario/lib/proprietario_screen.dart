@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'menu.dart';
-import 'tela_teste.dart';
+import 'tela_principal.dart';
 import 'tela_mesas_garcons.dart';
+import 'tela_estoque.dart';
 
 class ProprietarioScreen extends StatefulWidget {
   const ProprietarioScreen({super.key});
@@ -14,8 +15,9 @@ class _ProprietarioScreenState extends State<ProprietarioScreen> {
   int _selectedIndex = 0;
 
   final List<Widget> _pages = const [
-    TelaTeste(),        // index 0
+    TelaDashboard(),        // index 0
     TelaMesasGarcons(), // index 1
+    TelaEstoque(), // index 2
   ];
 
   void _onSelectPage(int index) {
