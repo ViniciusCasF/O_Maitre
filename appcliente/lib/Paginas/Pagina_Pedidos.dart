@@ -7,6 +7,7 @@ import '../Modelos/order_manager.dart';
 import '../Modelos/Pedidos.dart';
 import '../firebase_options.dart';
 import 'Pagina_Cardapio.dart'; // página principal (cardápio)
+import 'PaginaLeitorMesa.dart';
 
 class PaginaPedidos extends StatefulWidget {
   const PaginaPedidos({Key? key}) : super(key: key);
@@ -165,9 +166,18 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: ElevatedButton(
+                      // Dentro do ElevatedButton:
                       onPressed: items.isEmpty || enviando
                           ? null
-                          : _enviarPedidos,
+                          : () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => PaginaLeitorMesa(order: order),
+                          ),
+                        );
+                      },
+
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF448AFF),
                         padding: const EdgeInsets.symmetric(vertical: 14),
