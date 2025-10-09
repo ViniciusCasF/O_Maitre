@@ -26,19 +26,26 @@ class MenuWidget extends StatelessWidget {
             leading: const Icon(Icons.home),
             title: const Text("Tela de Teste"),
             selected: selectedIndex == 0,
-            onTap: () => onSelectPage(0), // chama a função passando o índice
+            onTap: () => onSelectPage(0),
           ),
           ListTile(
             leading: const Icon(Icons.table_bar),
             title: const Text("Mesas & Garçons"),
             selected: selectedIndex == 1,
-            onTap: () => onSelectPage(1), // chama a função passando o índice
+            onTap: () => onSelectPage(1),
           ),
           ListTile(
             leading: const Icon(Icons.inventory),
             title: const Text("Estoque"),
             selected: selectedIndex == 2,
             onTap: () => onSelectPage(2),
+          ),
+          // 🔹 Nova opção
+          ListTile(
+            leading: const Icon(Icons.fastfood),
+            title: const Text("Produtos"),
+            selected: selectedIndex == 3,
+            onTap: () => onSelectPage(3),
           ),
         ],
       ),
