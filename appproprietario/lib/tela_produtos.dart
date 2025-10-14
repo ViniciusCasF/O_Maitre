@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class TelaProdutos extends StatefulWidget {
   const TelaProdutos({super.key});
@@ -53,7 +54,8 @@ class _TelaProdutosState extends State<TelaProdutos> {
             margin: const EdgeInsets.all(8),
             child: ListTile(
               leading: produto['imagemBytes'] != null
-                  ? Image.memory(produto['imagemBytes'], width: 50, height: 50, fit: BoxFit.cover)
+                  ? Image.memory(produto['imagemBytes'],
+                  width: 50, height: 50, fit: BoxFit.cover)
                   : const Icon(Icons.image, size: 40),
               title: Text(produto['nome']),
               subtitle: Text(produto['descricao']),
@@ -91,7 +93,8 @@ class _AdicionarProdutoDialogState extends State<AdicionarProdutoDialog> {
       nomeController.text = widget.produtoExistente!['nome'];
       descricaoController.text = widget.produtoExistente!['descricao'];
       imagemBytes = widget.produtoExistente!['imagemBytes'];
-      _insumos.addAll(List<Map<String, dynamic>>.from(widget.produtoExistente!['insumos']));
+      _insumos.addAll(
+          List<Map<String, dynamic>>.from(widget.produtoExistente!['insumos']));
     }
   }
 
@@ -143,7 +146,9 @@ class _AdicionarProdutoDialogState extends State<AdicionarProdutoDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(widget.produtoExistente == null ? "Adicionar Produto" : "Editar Produto"),
+      title: Text(widget.produtoExistente == null
+          ? "Adicionar Produto"
+          : "Editar Produto"),
       content: SingleChildScrollView(
         child: Column(
           children: [
@@ -182,9 +187,12 @@ class _AdicionarProdutoDialogState extends State<AdicionarProdutoDialog> {
               children: _insumos.asMap().entries.map((entry) {
                 final index = entry.key;
                 final insumo = entry.value;
+                final unidade = insumo['unidade'] ?? ''; // pega a unidade do insumo
                 return ListTile(
                   title: Text(insumo['nome']),
-                  subtitle: Text("Quantidade: ${insumo['quantidade']}"),
+                  subtitle: Text(
+                    "Quantidade: ${insumo['quantidade']}${unidade.isNotEmpty ? ' ($unidade)' : ''}",
+                  ),
                   trailing: IconButton(
                     icon: const Icon(Icons.delete, color: Colors.red),
                     onPressed: () => removerInsumo(index),
@@ -192,6 +200,7 @@ class _AdicionarProdutoDialogState extends State<AdicionarProdutoDialog> {
                 );
               }).toList(),
             ),
+
           ],
         ),
       ),
@@ -209,6 +218,8 @@ class _AdicionarProdutoDialogState extends State<AdicionarProdutoDialog> {
   }
 }
 
+
+
 class AdicionarInsumoDialog extends StatefulWidget {
   const AdicionarInsumoDialog({super.key});
 
@@ -217,15 +228,29 @@ class AdicionarInsumoDialog extends StatefulWidget {
 }
 
 class _AdicionarInsumoDialogState extends State<AdicionarInsumoDialog> {
-  final TextEditingController nomeController = TextEditingController();
   final TextEditingController quantidadeController = TextEditingController();
+  String? insumoSelecionado;
+  String? unidadeSelecionada;
+
+  Future<List<Map<String, dynamic>>> carregarInsumos() async {
+    final snapshot = await FirebaseFirestore.instance.collection('insumos').get();
+    return snapshot.docs.map((doc) {
+      final data = doc.data();
+      return {
+        'id': doc.id,
+        'nome': data['nome'] ?? '',
+        'unidade': data['unidade'] ?? '',
+      };
+    }).toList();
+  }
 
   void salvar() {
-    if (nomeController.text.isEmpty || quantidadeController.text.isEmpty)
-      return;
+    if (insumoSelecionado == null || quantidadeController.text.isEmpty) return;
+
     Navigator.pop(context, {
-      'nome': nomeController.text,
+      'nome': insumoSelecionado!,
       'quantidade': quantidadeController.text,
+      'unidade': unidadeSelecionada ?? '',
     });
   }
 
@@ -233,19 +258,58 @@ class _AdicionarInsumoDialogState extends State<AdicionarInsumoDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text("Adicionar Insumo"),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: nomeController,
-            decoration: const InputDecoration(labelText: "Nome do Insumo"),
-          ),
-          TextField(
-            controller: quantidadeController,
-            decoration: const InputDecoration(labelText: "Quantidade"),
-            keyboardType: TextInputType.number,
-          ),
-        ],
+      content: FutureBuilder<List<Map<String, dynamic>>>(
+        future: carregarInsumos(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return const Text("Erro ao carregar insumos");
+          }
+
+          final insumos = snapshot.data ?? [];
+
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                decoration: const InputDecoration(labelText: "Selecione o Insumo"),
+                items: insumos.map<DropdownMenuItem<String>>((insumo) {
+                  return DropdownMenuItem<String>(
+                    value: insumo['nome'] as String,
+                    child: Text(insumo['nome'] as String),
+                  );
+                }).toList(),
+                value: insumoSelecionado,
+                onChanged: (String? valor) {
+                  setState(() {
+                    insumoSelecionado = valor;
+
+                    // Atualiza a unidade de acordo com o insumo selecionado
+                    final selecionado = insumos.firstWhere(
+                          (ins) => ins['nome'] == valor,
+                      orElse: () => {'unidade': ''},
+                    );
+                    unidadeSelecionada = selecionado['unidade'] as String?;
+                  });
+                },
+              ),
+
+
+              const SizedBox(height: 10),
+              TextField(
+                controller: quantidadeController,
+                decoration: InputDecoration(
+                  labelText: unidadeSelecionada == null
+                      ? "Quantidade"
+                      : "Quantidade (${unidadeSelecionada!})",
+                ),
+                keyboardType: TextInputType.number,
+              ),
+            ],
+          );
+        },
       ),
       actions: [
         TextButton(
@@ -260,6 +324,3 @@ class _AdicionarInsumoDialogState extends State<AdicionarInsumoDialog> {
     );
   }
 }
-
-
-
