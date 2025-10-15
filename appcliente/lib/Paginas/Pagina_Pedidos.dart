@@ -6,7 +6,7 @@ import '../Modelos/Itens.dart';
 import '../Modelos/order_manager.dart';
 import '../Modelos/Pedidos.dart';
 import '../firebase_options.dart';
-import 'Pagina_Cardapio.dart'; // página principal (cardápio)
+import 'Pagina_Cardapio.dart';
 import 'PaginaLeitorMesa.dart';
 
 class PaginaPedidos extends StatefulWidget {
@@ -38,17 +38,15 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
 
     try {
       final pedidosRef = db.collection('pedidos');
-      const numeroMesa = 5; // 🪑 você pode depois pegar isso dinamicamente
+      const numeroMesa = 5;
 
       for (var item in order.items) {
-        // exemplo simples: se o nome contiver "cerveja" ou "refrigerante", vai para o garçom
         final tipo = item.name.toLowerCase().contains('cerveja') ||
             item.name.toLowerCase().contains('refrigerante') ||
             item.name.toLowerCase().contains('bebida')
             ? 1
             : 0;
 
-        // cria N documentos (um por unidade)
         for (int i = 0; i < item.qty; i++) {
           final pedido = Pedido(
             nome: item.name,
@@ -58,7 +56,6 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
             mesa: numeroMesa,
             tipo: tipo,
           );
-
           await pedidosRef.add(pedido.toMap());
         }
       }
@@ -86,9 +83,7 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('✅ Pedido enviado!'),
-        content: const Text(
-          'Seu pedido foi enviado com sucesso!.',
-        ),
+        content: const Text('Seu pedido foi enviado com sucesso!'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
@@ -123,26 +118,42 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
                   itemBuilder: (_, i) {
                     final it = items[i];
                     return ListTile(
-                      leading: it.image != null && it.image.isNotEmpty
-                          ? Image.asset(it.image,
-                          width: 48, height: 48, fit: BoxFit.cover)
-                          : const Icon(Icons.fastfood),
-                      title: Text(it.name,
-                          style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600)),
+                      leading: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: it.image.isNotEmpty
+                            ? Image.network(
+                          it.image,
+                          width: 50,
+                          height: 50,
+                          fit: BoxFit.cover,
+                          errorBuilder:
+                              (context, error, stackTrace) =>
+                          const Icon(Icons.fastfood,
+                              size: 40,
+                              color: Colors.grey),
+                        )
+                            : const Icon(Icons.fastfood,
+                            size: 40, color: Colors.grey),
+                      ),
+                      title: Text(
+                        it.name,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                       subtitle: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text('Qtd: ${it.qty}'),
-                          if (it.description != null &&
-                              it.description.isNotEmpty)
+                          if (it.description.isNotEmpty)
                             Text(it.description),
                         ],
                       ),
                       trailing: IconButton(
                         icon: const Icon(Icons.delete_outline),
-                        onPressed: () => setState(() => order.removeAt(i)),
+                        onPressed: () =>
+                            setState(() => order.removeAt(i)),
                       ),
                     );
                   },
@@ -166,21 +177,21 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: ElevatedButton(
-                      // Dentro do ElevatedButton:
                       onPressed: items.isEmpty || enviando
                           ? null
                           : () {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => PaginaLeitorMesa(order: order),
+                            builder: (_) =>
+                                PaginaLeitorMesa(order: order),
                           ),
                         );
                       },
-
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF448AFF),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        padding:
+                        const EdgeInsets.symmetric(vertical: 14),
                       ),
                       child: enviando
                           ? const CircularProgressIndicator(
