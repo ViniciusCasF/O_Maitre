@@ -21,20 +21,15 @@ class _TelaProdutosState extends State<TelaProdutos> {
   }
 
   Future<void> carregarProdutos() async {
-    final snapshot = await FirebaseFirestore.instance.collection('produtos').get();
+    final snapshot =
+    await FirebaseFirestore.instance.collection('produtos').get();
     setState(() {
-      _produtos.clear();
-      for (var doc in snapshot.docs) {
-        _produtos.add({
-          ...doc.data(),
-          'id': doc.id,
-        });
-      }
+      _produtos = snapshot.docs
+          .map((doc) => {...doc.data(), 'id': doc.id})
+          .toList();
     });
   }
 
-
-  // ================== SALVAR NOVO / ATUALIZAR PRODUTO ==================
   void _abrirDialogAdicionarProduto([Map<String, dynamic>? produtoExistente]) async {
     final resultado = await showDialog<Map<String, dynamic>>(
       context: context,
@@ -42,17 +37,15 @@ class _TelaProdutosState extends State<TelaProdutos> {
     );
 
     if (resultado != null) {
-      await carregarProdutos(); // recarrega lista do banco
+      await carregarProdutos(); // Recarrega lista do banco
     }
   }
 
-  // ================== DELETAR PRODUTO ==================
   Future<void> _deletarProduto(String id) async {
     await FirebaseFirestore.instance.collection('produtos').doc(id).delete();
     carregarProdutos();
   }
 
-  // ================== INTERFACE ==================
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -77,12 +70,8 @@ class _TelaProdutosState extends State<TelaProdutos> {
             margin: const EdgeInsets.all(8),
             child: ListTile(
               leading: produto['imagemUrl'] != null
-                  ? Image.network(
-                produto['imagemUrl'],
-                width: 50,
-                height: 50,
-                fit: BoxFit.cover,
-              )
+                  ? Image.network(produto['imagemUrl'],
+                  width: 50, height: 50, fit: BoxFit.cover)
                   : const Icon(Icons.image, size: 40),
               title: Text(produto['nome']),
               subtitle: Column(
@@ -100,6 +89,25 @@ class _TelaProdutosState extends State<TelaProdutos> {
                       ),
                     )
                         .toList(),
+                  ),
+                ],
+              ),
+              trailing: PopupMenuButton<String>(
+                onSelected: (valor) {
+                  if (valor == 'editar') {
+                    _abrirDialogAdicionarProduto(produto);
+                  } else if (valor == 'deletar') {
+                    _deletarProduto(produto['id']);
+                  }
+                },
+                itemBuilder: (_) => [
+                  const PopupMenuItem(
+                    value: 'editar',
+                    child: Text('Editar'),
+                  ),
+                  const PopupMenuItem(
+                    value: 'deletar',
+                    child: Text('Excluir'),
                   ),
                 ],
               ),
@@ -132,6 +140,7 @@ class _AdicionarProdutoDialogState extends State<AdicionarProdutoDialog> {
   List<String> _tagsSelecionadas = [];
   List<String> _todasTags = [];
   String? imagemUrlExistente;
+  String? produtoId;
 
   @override
   void initState() {
@@ -144,6 +153,7 @@ class _AdicionarProdutoDialogState extends State<AdicionarProdutoDialog> {
       _tagsSelecionadas =
       List<String>.from(widget.produtoExistente!['tags'] ?? []);
       imagemUrlExistente = widget.produtoExistente!['imagemUrl'];
+      produtoId = widget.produtoExistente!['id'];
     }
     carregarTags();
   }
@@ -174,18 +184,6 @@ class _AdicionarProdutoDialogState extends State<AdicionarProdutoDialog> {
     }
   }
 
-  Future<String?> _uploadImagem(String produtoId) async {
-    if (imagemBytes == null) return imagemUrlExistente; // mantém se não mudou
-    try {
-      final ref = FirebaseStorage.instance.ref().child('produtos/$produtoId.jpg');
-      await ref.putData(imagemBytes!);
-      return await ref.getDownloadURL();
-    } catch (e) {
-      debugPrint("Erro ao enviar imagem: $e");
-      return null;
-    }
-  }
-
   Future<void> salvar() async {
     if (nomeController.text.isEmpty || descricaoController.text.isEmpty) return;
 
@@ -197,33 +195,41 @@ class _AdicionarProdutoDialogState extends State<AdicionarProdutoDialog> {
         builder: (_) => const Center(child: CircularProgressIndicator()),
       );
 
-      String? imageUrl;
+      String? imageUrl = imagemUrlExistente;
+
+      // Se selecionou nova imagem → substitui no Storage
       if (imagemBytes != null) {
-        // Salvar imagem no Storage
         final ref = FirebaseStorage.instance
             .ref()
             .child('produtos')
-            .child('${DateTime.now().millisecondsSinceEpoch}.jpg');
-
+            .child('${produtoId ?? DateTime.now().millisecondsSinceEpoch}.jpg');
         final uploadTask = await ref.putData(imagemBytes!);
         imageUrl = await uploadTask.ref.getDownloadURL();
       }
 
-      // Salvar dados no Firestore
       final produto = {
         'nome': nomeController.text,
         'descricao': descricaoController.text,
         'imagemUrl': imageUrl,
         'insumos': _insumos,
         'tags': _tagsSelecionadas,
-        'criadoEm': FieldValue.serverTimestamp(),
+        'atualizadoEm': FieldValue.serverTimestamp(),
       };
 
-      await FirebaseFirestore.instance.collection('produtos').add(produto);
+      final produtosRef = FirebaseFirestore.instance.collection('produtos');
+
+      if (produtoId != null) {
+        // Atualiza produto existente
+        await produtosRef.doc(produtoId).update(produto);
+      } else {
+        // Cria novo produto
+        produto['criadoEm'] = FieldValue.serverTimestamp();
+        await produtosRef.add(produto);
+      }
 
       if (context.mounted) {
-        Navigator.pop(context); // Fecha o loading
-        Navigator.pop(context, produto); // Retorna o produto para a tela principal
+        Navigator.pop(context); // fecha loading
+        Navigator.pop(context, produto);
       }
     } catch (e) {
       Navigator.pop(context);
@@ -232,7 +238,6 @@ class _AdicionarProdutoDialogState extends State<AdicionarProdutoDialog> {
       );
     }
   }
-
 
   void adicionarInsumo() async {
     final insumo = await showDialog<Map<String, dynamic>>(
@@ -247,7 +252,7 @@ class _AdicionarProdutoDialogState extends State<AdicionarProdutoDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(widget.produtoExistente == null ? "Adicionar Produto" : "Editar Produto"),
+      title: Text(produtoId == null ? "Adicionar Produto" : "Editar Produto"),
       content: SingleChildScrollView(
         child: Column(
           children: [
@@ -378,7 +383,11 @@ class _AdicionarInsumoDialogState extends State<AdicionarInsumoDialog> {
 
   void salvar() {
     if (insumoSelecionado == null || quantidadeController.text.isEmpty) return;
-    Navigator.pop(context, {'nome': insumoSelecionado!, 'quantidade': quantidadeController.text, 'unidade': unidadeSelecionada ?? ''});
+    Navigator.pop(context, {
+      'nome': insumoSelecionado!,
+      'quantidade': quantidadeController.text,
+      'unidade': unidadeSelecionada ?? ''
+    });
   }
 
   @override
