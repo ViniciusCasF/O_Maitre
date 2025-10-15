@@ -1,90 +1,85 @@
 import 'package:appgarcon/Paginas/Pagina_Produto.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../Widget/Barra_pesquisa.dart';
 import '../Widget/ProdutoCard.dart';
-import 'Pagina_Pedidos.dart'; // para abrir os pedidos
-import '../Modelos/order_manager.dart'; // para acessar os itens do pedido
+import 'Pagina_Pedidos.dart';
+import '../Modelos/order_manager.dart';
 
 class PaginaCardapio extends StatefulWidget {
   const PaginaCardapio({super.key});
 
   @override
-  State<PaginaCardapio> createState() => _PaginaCardapio();
+  State<PaginaCardapio> createState() => _PaginaCardapioState();
 }
 
-class _PaginaCardapio extends State<PaginaCardapio> {
+class _PaginaCardapioState extends State<PaginaCardapio> {
   String searchText = '';
   String filtroAtivo = '';
-
   final OrderManager order = OrderManager();
 
-  final List<String> filtros = [
-    'Entradas',
-    'Bebidas',
-    'Sobremesas',
-    'Porções',
-    'Massas',
-    'Carnes',
-  ];
+  List<Map<String, dynamic>> produtos = [];
+  List<String> filtros = [];
 
-  final List<Map<String, dynamic>> produtos = [
-    {
-      'nome': 'Bruschetta',
-      'preco': 15.90,
-      'categoria': 'Entradas',
-      'imagem': 'assets/images/bruschetta.jpg',
-      'descricao': 'Deliciosa torrada italiana com tomate e manjericão fresco.'
-    },
-    {
-      'nome': 'Coca-Cola',
-      'preco': 7.50,
-      'categoria': 'Bebidas',
-      'imagem': 'assets/images/coca_cola.jpg',
-      'descricao': 'Refrigerante gelado, perfeito para acompanhar qualquer refeição.'
-    },
-    {
-      'nome': 'Cheesecake',
-      'preco': 12.00,
-      'categoria': 'Sobremesas',
-      'imagem': 'assets/images/cheesecake.jpg',
-      'descricao': 'Clássica sobremesa americana de queijo com calda de frutas.'
-    },
-    {
-      'nome': 'Batata Frita',
-      'preco': 20.00,
-      'categoria': 'Porções',
-      'imagem': 'assets/images/batata_frita.jpg',
-      'descricao': 'Porção crocante de batatas fritas, perfeita para compartilhar.'
-    },
-    {
-      'nome': 'Spaghetti',
-      'preco': 25.90,
-      'categoria': 'Massas',
-      'imagem': 'assets/images/spaghetti.jpg',
-      'descricao': 'Espaguete italiano com molho artesanal de tomate e manjericão.'
-    },
-    {
-      'nome': 'Filé Mignon',
-      'preco': 45.00,
-      'categoria': 'Carnes',
-      'imagem': 'assets/images/file_mignon.jpg',
-      'descricao': 'Filé mignon grelhado, servido ao ponto com acompanhamentos.'
-    },
-    {
-      'nome': 'Suco de Laranja',
-      'preco': 8.00,
-      'categoria': 'Bebidas',
-      'imagem': 'assets/images/suco_laranja.jpg',
-      'descricao': 'Suco natural de laranja, feito na hora.'
-    },
-    {
-      'nome': 'Tiramisu',
-      'preco': 14.50,
-      'categoria': 'Sobremesas',
-      'imagem': 'assets/images/tiramisu.jpg',
-      'descricao': 'Sobremesa italiana clássica com café, mascarpone e cacau.'
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    carregarTudo();
+  }
+
+  Future<void> carregarTudo() async {
+    await Future.wait([
+      carregarProdutos(),
+      carregarTags(),
+    ]);
+  }
+
+  Future<void> carregarProdutos() async {
+    try {
+      final querySnapshot =
+      await FirebaseFirestore.instance.collection('produtos').get();
+
+      final novosProdutos = querySnapshot.docs.map((doc) {
+        final data = doc.data();
+
+        List<String> tags = [];
+        if (data['tags'] != null) {
+          tags = List<String>.from(data['tags']);
+        }
+
+        return {
+          'nome': data['nome'] ?? 'Sem nome',
+          'descricao': data['descricao'] ?? '',
+          'imagem': data['imagemUrl'] ?? '',
+          'tags': tags,
+        };
+      }).toList();
+
+      setState(() {
+        produtos = novosProdutos;
+      });
+    } catch (e) {
+      print('Erro ao carregar produtos: $e');
+    }
+  }
+
+  Future<void> carregarTags() async {
+    try {
+      final snapshot =
+      await FirebaseFirestore.instance.collection('tags').get();
+
+      final tags = snapshot.docs
+          .map((doc) => doc['nome']?.toString() ?? '')
+          .where((t) => t.isNotEmpty)
+          .toList();
+
+      setState(() {
+        filtros = tags;
+      });
+    } catch (e) {
+      print('Erro ao carregar tags: $e');
+    }
+  }
 
   void buscarAtualizacoes(String value) {
     setState(() {
@@ -95,10 +90,12 @@ class _PaginaCardapio extends State<PaginaCardapio> {
   @override
   Widget build(BuildContext context) {
     final produtosFiltrados = produtos.where((produto) {
-      final matchesCategoria =
-          filtroAtivo.isEmpty || produto['categoria'] == filtroAtivo;
+      final matchesCategoria = filtroAtivo.isEmpty ||
+          (produto['tags'] != null && produto['tags'].contains(filtroAtivo));
+
       final matchesBusca = searchText.isEmpty ||
           produto['nome'].toLowerCase().contains(searchText.toLowerCase());
+
       return matchesCategoria && matchesBusca;
     }).toList();
 
@@ -110,7 +107,7 @@ class _PaginaCardapio extends State<PaginaCardapio> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Filtros
+            // Filtros (tags)
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
@@ -124,7 +121,8 @@ class _PaginaCardapio extends State<PaginaCardapio> {
                 ],
               ),
             ),
-            // Produtos
+
+            // Lista de produtos
             Expanded(
               child: produtosFiltrados.isEmpty
                   ? const Center(child: Text('Nenhum produto encontrado'))
@@ -147,18 +145,18 @@ class _PaginaCardapio extends State<PaginaCardapio> {
                         MaterialPageRoute(
                           builder: (_) => PaginaProduto(
                             nome: produto['nome'],
-                            preco: produto['preco'],
+                            preco: 0,
                             imagem: produto['imagem'],
                             descricao: produto['descricao'],
                           ),
                         ),
                       ).then((_) {
-                        setState(() {}); // força rebuild para mostrar barra
+                        setState(() {});
                       });
                     },
                     child: ProdutoCard(
                       nome: produto['nome'],
-                      preco: produto['preco'],
+                      preco: 0,
                       imagem: produto['imagem'],
                     ),
                   );
@@ -169,7 +167,7 @@ class _PaginaCardapio extends State<PaginaCardapio> {
         ),
       ),
 
-      // Barra do pedido (fica acima da nav-bar)
+      // Barra de pedidos
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -192,7 +190,7 @@ class _PaginaCardapio extends State<PaginaCardapio> {
                         context,
                         MaterialPageRoute(builder: (_) => const PaginaPedidos()),
                       ).then((_) {
-                        setState(() {}); // atualiza quando volta
+                        setState(() {});
                       });
                     },
                     style: ElevatedButton.styleFrom(

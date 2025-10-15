@@ -27,7 +27,24 @@ class PaginaProduto extends StatelessWidget {
           // Imagem grande (30% da tela)
           SizedBox(
             height: MediaQuery.of(context).size.height * 0.3,
-            child: Image.asset(imagem, fit: BoxFit.cover),
+            child: Image.network(
+              imagem,
+              fit: BoxFit.cover,
+              width: double.infinity,
+              loadingBuilder: (context, child, loadingProgress) {
+                if (loadingProgress == null) return child;
+                return const Center(child: CircularProgressIndicator());
+              },
+              errorBuilder: (context, error, stackTrace) {
+                print('Erro ao carregar imagem: $imagem');
+                print('Detalhes do erro: $error');
+                return Container(
+                  color: Colors.grey[300],
+                  child: const Icon(Icons.broken_image,
+                      size: 80, color: Colors.grey),
+                );
+              },
+            ),
           ),
 
           // Descrição do produto
@@ -46,7 +63,8 @@ class PaginaProduto extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             child: ElevatedButton(
               onPressed: () {
-                final TextEditingController detalhesController = TextEditingController();
+                final TextEditingController detalhesController =
+                TextEditingController();
                 int qty = 1;
 
                 showModalBottomSheet(
@@ -57,7 +75,8 @@ class PaginaProduto extends StatelessWidget {
                       builder: (contextSB, setStateSB) {
                         return Padding(
                           padding: EdgeInsets.only(
-                            bottom: MediaQuery.of(contextSB).viewInsets.bottom,
+                            bottom:
+                            MediaQuery.of(contextSB).viewInsets.bottom,
                           ),
                           child: Padding(
                             padding: const EdgeInsets.all(16),
@@ -66,7 +85,10 @@ class PaginaProduto extends StatelessWidget {
                               children: [
                                 Text(
                                   'Adicionar $nome',
-                                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                                 const SizedBox(height: 8),
 
@@ -78,12 +100,17 @@ class PaginaProduto extends StatelessWidget {
                                       onPressed: () => setStateSB(() {
                                         if (qty > 1) qty--;
                                       }),
-                                      icon: const Icon(Icons.remove_circle_outline),
+                                      icon: const Icon(
+                                          Icons.remove_circle_outline),
                                     ),
-                                    Text('$qty', style: const TextStyle(fontSize: 18)),
+                                    Text('$qty',
+                                        style:
+                                        const TextStyle(fontSize: 18)),
                                     IconButton(
-                                      onPressed: () => setStateSB(() => qty++),
-                                      icon: const Icon(Icons.add_circle_outline),
+                                      onPressed: () =>
+                                          setStateSB(() => qty++),
+                                      icon: const Icon(
+                                          Icons.add_circle_outline),
                                     ),
                                   ],
                                 ),
@@ -105,12 +132,14 @@ class PaginaProduto extends StatelessWidget {
                                         onPressed: () {
                                           // adiciona o item e volta para o cardápio
                                           OrderManager().addItem(
-                                            Item(nome, qty, preco, imagem, detalhesController.text),
+                                            Item(nome, qty, preco, imagem,
+                                                detalhesController.text),
                                           );
-                                          Navigator.of(contextSB).pop(); // fecha bottomSheet
-                                          Navigator.of(context).pop(); // fecha produto -> volta cardápio
+                                          Navigator.of(contextSB).pop();
+                                          Navigator.of(context).pop();
                                         },
-                                        child: const Text('Adicionar & continuar'),
+                                        child: const Text(
+                                            'Adicionar & continuar'),
                                       ),
                                     ),
                                     const SizedBox(width: 8),
@@ -119,15 +148,20 @@ class PaginaProduto extends StatelessWidget {
                                         onPressed: () {
                                           // adiciona o item e vai para pedidos
                                           OrderManager().addItem(
-                                            Item(nome, qty, preco, imagem, detalhesController.text),
+                                            Item(nome, qty, preco, imagem,
+                                                detalhesController.text),
                                           );
-                                          Navigator.of(contextSB).pop(); // fecha bottomSheet
+                                          Navigator.of(contextSB).pop();
                                           Navigator.push(
                                             context,
-                                            MaterialPageRoute(builder: (_) => const PaginaPedidos()),
+                                            MaterialPageRoute(
+                                              builder: (_) =>
+                                              const PaginaPedidos(),
+                                            ),
                                           );
                                         },
-                                        child: const Text('Ir para pedidos'),
+                                        child:
+                                        const Text('Ir para pedidos'),
                                       ),
                                     ),
                                   ],
@@ -148,7 +182,8 @@ class PaginaProduto extends StatelessWidget {
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              child: Text("Adicionar por R\$ ${preco.toStringAsFixed(2)}"),
+              child:
+              Text("Adicionar por R\$ ${preco.toStringAsFixed(2)}"),
             ),
           ),
         ],

@@ -23,21 +23,33 @@ class ProdutoCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Imagem do produto
+          // Imagem do produto (da internet)
           Expanded(
             child: ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-              child: Image.asset(
+              borderRadius:
+              const BorderRadius.vertical(top: Radius.circular(12)),
+              child: Image.network(
                 imagem,
                 fit: BoxFit.cover,
                 width: double.infinity,
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return Center(
+                    child: CircularProgressIndicator(
+                      value: loadingProgress.expectedTotalBytes != null
+                          ? loadingProgress.cumulativeBytesLoaded /
+                          (loadingProgress.expectedTotalBytes ?? 1)
+                          : null,
+                    ),
+                  );
+                },
                 errorBuilder: (context, error, stackTrace) {
-                  print('Erro ao carregar a imagem: $imagem'); // Log do caminho da imagem
-                  print('Detalhes do erro: $error'); // Log do erro exato
-                  print('Stack trace: $stackTrace'); // Log adicional para depuração
+                  print('Erro ao carregar a imagem: $imagem');
+                  print('Detalhes do erro: $error');
                   return Container(
                     color: Colors.grey[300],
-                    child: const Icon(Icons.broken_image, size: 50, color: Colors.grey),
+                    child: const Icon(Icons.broken_image,
+                        size: 50, color: Colors.grey),
                   );
                 },
               ),
