@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'Barra_pesquisa.dart';
 
 // Modelo de pedido
@@ -29,6 +30,8 @@ class KitchenScreen extends StatefulWidget {
 }
 
 class _KitchenScreenState extends State<KitchenScreen> {
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
+
   bool serviceEnded = false;
   final TextEditingController searchController = TextEditingController();
 
@@ -41,7 +44,7 @@ class _KitchenScreenState extends State<KitchenScreen> {
   void initState() {
     super.initState();
 
-    // Mock de pedidos
+    // Mock de pedidos (exemplo)
     pedidos = List.generate(
       10,
           (i) => Pedido(
@@ -68,6 +71,15 @@ class _KitchenScreenState extends State<KitchenScreen> {
     super.dispose();
   }
 
+  // 🔥 Atualiza o estado da cozinha no Firestore
+  Future<void> _atualizarEstadoCozinha(bool aberta) async {
+    await _db.collection('estados').doc('cozinha').set({
+      'aberta': aberta,
+      'atualizadoPor': 'cozinha',
+      'atualizadoEm': FieldValue.serverTimestamp(),
+    });
+  }
+
   // Função para filtrar pedidos
   void filtrarPedidos(String query) {
     setState(() {
@@ -89,8 +101,7 @@ class _KitchenScreenState extends State<KitchenScreen> {
     return "${twoDigits(d.inMinutes)}:${twoDigits(d.inSeconds % 60)}";
   }
 
-  // Abre o modal com detalhes
-  // Abre o modal com detalhes
+  // Modal de detalhes do pedido
   void mostrarDetalhes(Pedido pedido) {
     showDialog(
       context: context,
@@ -98,10 +109,9 @@ class _KitchenScreenState extends State<KitchenScreen> {
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setStateDialog) {
-            // Inicia um timer para atualizar a janela enquanto aberta
             Timer.periodic(const Duration(seconds: 1), (timer) {
-              if (Navigator.of(context).canPop() == false) {
-                timer.cancel(); // cancela quando o dialog fecha
+              if (!Navigator.of(context).canPop()) {
+                timer.cancel();
               } else {
                 setStateDialog(() {});
               }
@@ -116,7 +126,6 @@ class _KitchenScreenState extends State<KitchenScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Cronômetro
                     Text(
                       formatDuration(DateTime.now().difference(pedido.startTime)),
                       style: const TextStyle(
@@ -126,8 +135,6 @@ class _KitchenScreenState extends State<KitchenScreen> {
                       ),
                     ),
                     const SizedBox(height: 20),
-
-                    // Nome do produto
                     Text(
                       pedido.nomeProduto,
                       style: const TextStyle(
@@ -137,16 +144,12 @@ class _KitchenScreenState extends State<KitchenScreen> {
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 10),
-
-                    // Descrição
                     Text(
                       pedido.descricao,
                       style: const TextStyle(fontSize: 16),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 20),
-
-                    // Botão dinâmico
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(
                         backgroundColor:
@@ -163,7 +166,7 @@ class _KitchenScreenState extends State<KitchenScreen> {
                           } else {
                             pedido.entregue = true;
                           }
-                          Navigator.pop(context); // fecha modal
+                          Navigator.pop(context);
                           filtrarPedidos(searchController.text);
                         });
                       },
@@ -182,7 +185,6 @@ class _KitchenScreenState extends State<KitchenScreen> {
     );
   }
 
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -199,33 +201,46 @@ class _KitchenScreenState extends State<KitchenScreen> {
               ),
             ),
 
-            // Switch
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Switch(
-                  value: serviceEnded,
-                  onChanged: (value) {
-                    setState(() {
-                      serviceEnded = value;
-                    });
-                  },
-                ),
-                const Text(
-                  "Encerrar Serviço da cozinha",
-                  style: TextStyle(fontSize: 16),
-                ),
-              ],
+            // 🔥 STREAM DO FIRESTORE (sincroniza com o painel do proprietário)
+            StreamBuilder<DocumentSnapshot>(
+              stream: _db.collection('estados').doc('cozinha').snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return const Text("Erro ao carregar estado da cozinha");
+                }
+                if (!snapshot.hasData || !snapshot.data!.exists) {
+                  return const CircularProgressIndicator();
+                }
+
+                final data = snapshot.data!.data() as Map<String, dynamic>;
+                final cozinhaAberta = data['aberta'] ?? false;
+
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Switch(
+                      value: cozinhaAberta,
+                      onChanged: (value) {
+                        _atualizarEstadoCozinha(value);
+                      },
+                    ),
+                    const Text(
+                      "Encerrar Serviço da Cozinha",
+                      style: TextStyle(fontSize: 16),
+                    ),
+                  ],
+                );
+              },
             ),
 
             const SizedBox(height: 10),
 
-            // Janela com pedidos
+            // Lista de pedidos
             Expanded(
               child: GridView.builder(
                 padding: const EdgeInsets.all(10),
                 gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 4, // ajusta conforme a tela
+                  crossAxisCount: 4,
                   crossAxisSpacing: 8,
                   mainAxisSpacing: 8,
                   childAspectRatio: 0.9,

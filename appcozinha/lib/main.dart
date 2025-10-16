@@ -1,7 +1,16 @@
 import 'package:flutter/material.dart';
-import 'KitchenScreen.dart'; // importa a tela que você criou
+import 'package:firebase_core/firebase_core.dart';
+import 'KitchenScreen.dart'; // sua tela principal
+import 'firebase_options.dart'; // gerado automaticamente pelo FlutterFire CLI
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Inicializa o Firebase
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
   runApp(const MyApp());
 }
 
@@ -16,7 +25,7 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
-      home: const KitchenScreen(), // sua tela inicial
+      home: const KitchenScreen(),
     );
   }
 }
