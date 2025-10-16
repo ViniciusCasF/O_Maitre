@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class TelaDashboard extends StatefulWidget {
   const TelaDashboard({super.key});
@@ -9,16 +10,24 @@ class TelaDashboard extends StatefulWidget {
 
 class _TelaDashboardState extends State<TelaDashboard> {
   bool _restauranteAberto = true;
-  bool _cozinhaAberta = true;
   String _periodoSelecionado = "Dia";
 
-  // Mock de valores
   final Map<String, Map<String, double>> _dados = {
     "Dia": {"recebido": 1200, "insumos": 400},
     "Semana": {"recebido": 8200, "insumos": 2500},
     "Mês": {"recebido": 32000, "insumos": 11000},
     "Ano": {"recebido": 380000, "insumos": 135000},
   };
+
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
+
+  Future<void> _atualizarEstadoCozinha(bool aberta) async {
+    await _db.collection('estados').doc('cozinha').set({
+      'aberta': aberta,
+      'atualizadoPor': 'proprietario', // ou 'cozinha'
+      'atualizadoEm': FieldValue.serverTimestamp(),
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -27,54 +36,66 @@ class _TelaDashboardState extends State<TelaDashboard> {
     final rendaBruta = recebido - insumos;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Painel do Proprietário"),
-      ),
+      appBar: AppBar(title: const Text("Painel do Proprietário")),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
-            // Switches do topo
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                Column(
+            // 🔥 STREAM DO FIREBASE
+            StreamBuilder<DocumentSnapshot>(
+              stream: _db.collection('estados').doc('cozinha').snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return const Text("Erro ao carregar estado da cozinha");
+                }
+                if (!snapshot.hasData || !snapshot.data!.exists) {
+                  return const CircularProgressIndicator();
+                }
+
+                final data = snapshot.data!.data() as Map<String, dynamic>;
+                final cozinhaAberta = data['aberta'] ?? false;
+
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    const Text("Fechar o restaurante"),
-                    Switch(
-                      value: _restauranteAberto,
-                      onChanged: (v) {
-                        setState(() => _restauranteAberto = v);
-                      },
+                    Column(
+                      children: [
+                        const Text("Fechar o restaurante"),
+                        Switch(
+                          value: _restauranteAberto,
+                          onChanged: (v) {
+                            setState(() => _restauranteAberto = v);
+                          },
+                        ),
+                      ],
+                    ),
+                    Column(
+                      children: [
+                        const Text("Encerrar a cozinha"),
+                        Switch(
+                          value: cozinhaAberta,
+                          onChanged: (v) {
+                            _atualizarEstadoCozinha(v);
+                          },
+                        ),
+                      ],
                     ),
                   ],
-                ),
-                Column(
-                  children: [
-                    const Text("Encerrar a cozinha"),
-                    Switch(
-                      value: _cozinhaAberta,
-                      onChanged: (v) {
-                        setState(() => _cozinhaAberta = v);
-                      },
-                    ),
-                  ],
-                ),
-              ],
+                );
+              },
             ),
+
             const SizedBox(height: 20),
 
-            // Filtro de período centralizado
+            // Filtro de período
             Column(
               children: [
-                const Text(
-                  "Filtrar por:",
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-                ),
+                const Text("Filtrar por:",
+                    style:
+                    TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
                 const SizedBox(height: 8),
                 DropdownButton<String>(
                   value: _periodoSelecionado,
-                  alignment: Alignment.center,
                   items: const [
                     DropdownMenuItem(value: "Dia", child: Text("Dia")),
                     DropdownMenuItem(value: "Semana", child: Text("Semana")),
@@ -87,9 +108,10 @@ class _TelaDashboardState extends State<TelaDashboard> {
                 ),
               ],
             ),
+
             const SizedBox(height: 24),
 
-            // Cards estilo PowerBI
+            // Cards de resumo
             Expanded(
               child: GridView.count(
                 crossAxisCount:
