@@ -9,7 +9,6 @@ class TelaDashboard extends StatefulWidget {
 }
 
 class _TelaDashboardState extends State<TelaDashboard> {
-  bool _restauranteAberto = true;
   String _periodoSelecionado = "Dia";
 
   final Map<String, Map<String, double>> _dados = {
@@ -21,10 +20,20 @@ class _TelaDashboardState extends State<TelaDashboard> {
 
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
+  /// Atualiza o estado da cozinha
   Future<void> _atualizarEstadoCozinha(bool aberta) async {
     await _db.collection('estados').doc('cozinha').set({
       'aberta': aberta,
-      'atualizadoPor': 'proprietario', // ou 'cozinha'
+      'atualizadoPor': 'proprietario',
+      'atualizadoEm': FieldValue.serverTimestamp(),
+    });
+  }
+
+  /// Atualiza o estado do restaurante
+  Future<void> _atualizarEstadoRestaurante(bool aberto) async {
+    await _db.collection('estados').doc('restaurante').set({
+      'aberto': aberto,
+      'atualizadoPor': 'proprietario',
       'atualizadoEm': FieldValue.serverTimestamp(),
     });
   }
@@ -41,47 +50,91 @@ class _TelaDashboardState extends State<TelaDashboard> {
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
-            // 🔥 STREAM DO FIREBASE
-            StreamBuilder<DocumentSnapshot>(
-              stream: _db.collection('estados').doc('cozinha').snapshots(),
+            /// 🔥 STREAM BUILDER COM OS DOIS ESTADOS
+            StreamBuilder<QuerySnapshot>(
+              stream: _db.collection('estados').snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.hasError) {
-                  return const Text("Erro ao carregar estado da cozinha");
+                  return const Text("Erro ao carregar estados");
                 }
-                if (!snapshot.hasData || !snapshot.data!.exists) {
+                if (!snapshot.hasData) {
                   return const CircularProgressIndicator();
                 }
 
-                final data = snapshot.data!.data() as Map<String, dynamic>;
-                final cozinhaAberta = data['aberta'] ?? false;
+                // Pega os documentos
+                final docs = snapshot.data!.docs;
+                final cozinhaDoc = docs.where((d) => d.id == 'cozinha').isNotEmpty
+                    ? docs.firstWhere((d) => d.id == 'cozinha')
+                    : null;
 
-                return Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                final restauranteDoc = docs.where((d) => d.id == 'restaurante').isNotEmpty
+                    ? docs.firstWhere((d) => d.id == 'restaurante')
+                    : null;
+
+                final cozinhaData = cozinhaDoc?.data() as Map<String, dynamic>?;
+                final restauranteData = restauranteDoc?.data() as Map<String, dynamic>?;
+
+
+                final cozinhaAberta = cozinhaData?['aberta'] ?? false;
+                final restauranteAberto = restauranteData?['aberto'] ?? false;
+
+                return Column(
                   children: [
-                    Column(
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
-                        const Text("Fechar o restaurante"),
-                        Switch(
-                          value: _restauranteAberto,
-                          onChanged: (v) {
-                            setState(() => _restauranteAberto = v);
-                          },
+                        // 🔷 Controle do restaurante
+                        Column(
+                          children: [
+                            const Text("Abrir/Fechar Restaurante"),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Switch(
+                                  value: restauranteAberto,
+                                  onChanged: (v) => _atualizarEstadoRestaurante(v),
+                                ),
+                                Text(
+                                  restauranteAberto ? "Aberto" : "Fechado",
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: restauranteAberto ? Colors.green : Colors.red,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                    Column(
-                      children: [
-                        const Text("Encerrar a cozinha"),
-                        Switch(
-                          value: cozinhaAberta,
-                          onChanged: (v) {
-                            _atualizarEstadoCozinha(v);
-                          },
+
+                        // 🔶 Controle da cozinha
+                        Column(
+                          children: [
+                            const Text("Encerrar Cozinha"),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Switch(
+                                  value: cozinhaAberta,
+                                  onChanged: (v) => _atualizarEstadoCozinha(v),
+                                ),
+                                Text(
+                                  cozinhaAberta ? "Aberta" : "Fechada",
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: cozinhaAberta ? Colors.green : Colors.red,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
                       ],
                     ),
                   ],
                 );
+
               },
             ),
 
