@@ -48,7 +48,7 @@ class _KitchenScreenState extends State<KitchenScreen> {
     pedidos = List.generate(
       10,
           (i) => Pedido(
-        nomeProduto: i % 2 == 0 ? "Porção Batata Frita" : "Hamburguer",
+        nomeProduto: i % 2 == 0 ? "Porção Batata Frita" : "Hambúrguer",
         mesa: i + 1,
         startTime: DateTime.now(),
         descricao: i % 2 == 0
@@ -218,15 +218,25 @@ class _KitchenScreenState extends State<KitchenScreen> {
                 return Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
+                    const Text(
+                      "Cozinha:",
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      cozinhaAberta ? "Aberta" : "Fechada",
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: cozinhaAberta ? Colors.green : Colors.red,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
                     Switch(
                       value: cozinhaAberta,
                       onChanged: (value) {
                         _atualizarEstadoCozinha(value);
                       },
-                    ),
-                    const Text(
-                      "Encerrar Serviço da Cozinha",
-                      style: TextStyle(fontSize: 16),
                     ),
                   ],
                 );
