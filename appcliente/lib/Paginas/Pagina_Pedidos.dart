@@ -38,25 +38,17 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
 
     try {
       final pedidosRef = db.collection('pedidos');
-      const numeroMesa = 5;
+      const numeroMesa = 5; // 🔹 Pode vir do QR Code ou tela anterior
 
       for (var item in order.items) {
-        final tipo = item.name.toLowerCase().contains('cerveja') ||
-            item.name.toLowerCase().contains('refrigerante') ||
-            item.name.toLowerCase().contains('bebida')
-            ? 1
-            : 0;
-
         for (int i = 0; i < item.qty; i++) {
-          final pedido = Pedido(
-            nome: item.name,
-            descricao: item.description ?? '',
-            imagem: item.image,
-            data: DateTime.now(),
-            mesa: numeroMesa,
-            tipo: tipo,
-          );
-          await pedidosRef.add(pedido.toMap());
+          await pedidosRef.add({
+            'nomeProduto': item.name,
+            'mesa': numeroMesa,
+            'descricao': item.description ?? '',
+            'status': 1, // 🔹 1 = pendente / em preparo
+            'startTime': FieldValue.serverTimestamp(), // 🔹 garante timestamp válido
+          });
         }
       }
 
@@ -76,6 +68,7 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
       if (mounted) setState(() => enviando = false);
     }
   }
+
 
   Future<void> _mostrarPopupSucesso(BuildContext context) async {
     return showDialog(
