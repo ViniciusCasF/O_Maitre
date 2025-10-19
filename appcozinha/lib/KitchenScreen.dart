@@ -3,25 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'Barra_pesquisa.dart';
 
-// Modelo de pedido
-class Pedido {
-  final String nomeProduto;
-  final int mesa;
-  final DateTime startTime;
-  final String descricao;
-  bool iniciado;
-  bool entregue;
-
-  Pedido({
-    required this.nomeProduto,
-    required this.mesa,
-    required this.startTime,
-    this.descricao = "Sem observações",
-    this.iniciado = false,
-    this.entregue = false,
-  });
-}
-
 class KitchenScreen extends StatefulWidget {
   const KitchenScreen({super.key});
 
@@ -31,37 +12,15 @@ class KitchenScreen extends StatefulWidget {
 
 class _KitchenScreenState extends State<KitchenScreen> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
-
-  bool serviceEnded = false;
   final TextEditingController searchController = TextEditingController();
-
-  List<Pedido> pedidos = [];
-  List<Pedido> pedidosFiltrados = [];
 
   Timer? timer;
 
   @override
   void initState() {
     super.initState();
-
-    // Mock de pedidos (exemplo)
-    pedidos = List.generate(
-      10,
-          (i) => Pedido(
-        nomeProduto: i % 2 == 0 ? "Porção Batata Frita" : "Hambúrguer",
-        mesa: i + 1,
-        startTime: DateTime.now(),
-        descricao: i % 2 == 0
-            ? "Sem sal, adicional de queijo"
-            : "Ponto médio, sem cebola",
-      ),
-    );
-
-    pedidosFiltrados = List.from(pedidos);
-
-    // Atualiza o cronômetro a cada segundo
     timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      setState(() {});
+      setState(() {}); // Atualiza cronômetros
     });
   }
 
@@ -71,7 +30,7 @@ class _KitchenScreenState extends State<KitchenScreen> {
     super.dispose();
   }
 
-  // 🔥 Atualiza o estado da cozinha no Firestore
+  // Atualiza estado da cozinha (aberta/fechada)
   Future<void> _atualizarEstadoCozinha(bool aberta) async {
     await _db.collection('estados').doc('cozinha').set({
       'aberta': aberta,
@@ -80,29 +39,21 @@ class _KitchenScreenState extends State<KitchenScreen> {
     });
   }
 
-  // Função para filtrar pedidos
-  void filtrarPedidos(String query) {
-    setState(() {
-      if (query.isEmpty) {
-        pedidosFiltrados = pedidos.where((p) => !p.entregue).toList();
-      } else {
-        pedidosFiltrados = pedidos
-            .where((p) =>
-        p.nomeProduto.toLowerCase().contains(query.toLowerCase()) &&
-            !p.entregue)
-            .toList();
-      }
+  // Atualiza status do pedido
+  Future<void> _atualizarStatusPedido(String id, int novoStatus) async {
+    await _db.collection('pedidos').doc(id).update({
+      'status': novoStatus,
     });
   }
 
-  // Formata duração como mm:ss
+  // Formata duração
   String formatDuration(Duration d) {
     String twoDigits(int n) => n.toString().padLeft(2, "0");
     return "${twoDigits(d.inMinutes)}:${twoDigits(d.inSeconds % 60)}";
   }
 
-  // Modal de detalhes do pedido
-  void mostrarDetalhes(Pedido pedido) {
+  // Mostra detalhes do pedido (modal)
+  void mostrarDetalhes(String id, Map<String, dynamic> pedido) {
     showDialog(
       context: context,
       barrierDismissible: true,
@@ -117,6 +68,32 @@ class _KitchenScreenState extends State<KitchenScreen> {
               }
             });
 
+            final startTime = (pedido['startTime'] as Timestamp).toDate();
+            final elapsed = DateTime.now().difference(startTime);
+            final status = pedido['status'] ?? 2;
+
+            // Tradução da lógica:
+            // 2 = chegou
+            // 3 = em preparo
+            // 1 = pronto (entregar)
+            String botaoTexto;
+            Color botaoCor;
+            int? proximoStatus;
+
+            if (status == 2) {
+              botaoTexto = "Iniciar preparo";
+              botaoCor = Colors.blue;
+              proximoStatus = 3;
+            } else if (status == 3) {
+              botaoTexto = "Pedido pronto";
+              botaoCor = Colors.green;
+              proximoStatus = 1;
+            } else {
+              botaoTexto = "Pedido entregue";
+              botaoCor = Colors.grey;
+              proximoStatus = null;
+            }
+
             return Dialog(
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
@@ -127,7 +104,7 @@ class _KitchenScreenState extends State<KitchenScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      formatDuration(DateTime.now().difference(pedido.startTime)),
+                      formatDuration(elapsed),
                       style: const TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.bold,
@@ -136,7 +113,7 @@ class _KitchenScreenState extends State<KitchenScreen> {
                     ),
                     const SizedBox(height: 20),
                     Text(
-                      pedido.nomeProduto,
+                      pedido['nomeProduto'],
                       style: const TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.w600,
@@ -145,33 +122,27 @@ class _KitchenScreenState extends State<KitchenScreen> {
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      pedido.descricao,
+                      pedido['descricao'] ?? "Sem observações",
                       style: const TextStyle(fontSize: 16),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 20),
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor:
-                        pedido.iniciado ? Colors.green : Colors.blue,
+                        backgroundColor: botaoCor,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
                         minimumSize: const Size(double.infinity, 45),
                       ),
-                      onPressed: () {
-                        setState(() {
-                          if (!pedido.iniciado) {
-                            pedido.iniciado = true;
-                          } else {
-                            pedido.entregue = true;
-                          }
-                          Navigator.pop(context);
-                          filtrarPedidos(searchController.text);
-                        });
+                      onPressed: proximoStatus == null
+                          ? null
+                          : () async {
+                        await _atualizarStatusPedido(id, proximoStatus!);
+                        Navigator.pop(context);
                       },
                       child: Text(
-                        pedido.iniciado ? "Entregar pedido" : "Iniciar preparo",
+                        botaoTexto,
                         style: const TextStyle(color: Colors.white),
                       ),
                     ),
@@ -185,6 +156,13 @@ class _KitchenScreenState extends State<KitchenScreen> {
     );
   }
 
+  // Filtro da barra de pesquisa
+  bool _filtrar(Map<String, dynamic> pedido, String query) {
+    if (query.isEmpty) return true;
+    final nome = (pedido['nomeProduto'] ?? "").toString().toLowerCase();
+    return nome.contains(query.toLowerCase());
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -192,16 +170,16 @@ class _KitchenScreenState extends State<KitchenScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Barra de pesquisa
+            // 🔎 Barra de pesquisa
             Padding(
               padding: const EdgeInsets.all(8.0),
               child: BarraPesquisa(
                 controller: searchController,
-                onChanged: filtrarPedidos,
+                onChanged: (_) => setState(() {}),
               ),
             ),
 
-            // 🔥 STREAM DO FIRESTORE (sincroniza com o painel do proprietário)
+            // 🔥 Estado da cozinha
             StreamBuilder<DocumentSnapshot>(
               stream: _db.collection('estados').doc('cozinha').snapshots(),
               builder: (context, snapshot) {
@@ -220,7 +198,8 @@ class _KitchenScreenState extends State<KitchenScreen> {
                   children: [
                     const Text(
                       "Cozinha:",
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      style:
+                      TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(width: 8),
                     Text(
@@ -245,64 +224,93 @@ class _KitchenScreenState extends State<KitchenScreen> {
 
             const SizedBox(height: 10),
 
-            // Lista de pedidos
+            // 📋 Lista de pedidos
             Expanded(
-              child: GridView.builder(
-                padding: const EdgeInsets.all(10),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 4,
-                  crossAxisSpacing: 8,
-                  mainAxisSpacing: 8,
-                  childAspectRatio: 0.9,
-                ),
-                itemCount: pedidosFiltrados.length,
-                itemBuilder: (context, index) {
-                  final pedido = pedidosFiltrados[index];
-                  final elapsed = DateTime.now().difference(pedido.startTime);
+              child: StreamBuilder<QuerySnapshot>(
+                stream: _db.collection('pedidos').snapshots(),
+                builder: (context, snapshot) {
+                  if (snapshot.hasError) {
+                    return const Center(child: Text("Erro ao carregar pedidos"));
+                  }
+                  if (!snapshot.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
 
-                  return GestureDetector(
-                    onTap: () => mostrarDetalhes(pedido),
-                    child: Card(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        side: BorderSide(
-                          color: pedido.iniciado ? Colors.green : Colors.black,
-                          width: 2,
-                        ),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(6),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              formatDuration(elapsed),
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.red,
-                              ),
-                            ),
-                            Expanded(
-                              child: Center(
-                                child: Text(
-                                  pedido.nomeProduto,
-                                  textAlign: TextAlign.center,
-                                  style: const TextStyle(fontSize: 13),
-                                ),
-                              ),
-                            ),
-                            Text(
-                              "Mesa: ${pedido.mesa}",
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                  final pedidos = snapshot.data!.docs.where((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    final status = data['status'] ?? 2;
+                    // Exibe apenas pedidos com status 2 (chegou) ou 3 (em preparo)
+                    return (status == 2 || status == 3) &&
+                        _filtrar(data, searchController.text);
+                  }).toList();
+
+                  if (pedidos.isEmpty) {
+                    return const Center(child: Text("Nenhum pedido pendente"));
+                  }
+
+                  return GridView.builder(
+                    padding: const EdgeInsets.all(10),
+                    gridDelegate:
+                    const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 4,
+                      crossAxisSpacing: 8,
+                      mainAxisSpacing: 8,
+                      childAspectRatio: 0.9,
                     ),
+                    itemCount: pedidos.length,
+                    itemBuilder: (context, index) {
+                      final doc = pedidos[index];
+                      final data = doc.data() as Map<String, dynamic>;
+                      final startTime =
+                      (data['startTime'] as Timestamp).toDate();
+                      final elapsed = DateTime.now().difference(startTime);
+                      final status = data['status'] ?? 2;
+
+                      return GestureDetector(
+                        onTap: () => mostrarDetalhes(doc.id, data),
+                        child: Card(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            side: BorderSide(
+                              color: status == 3 ? Colors.green : Colors.black,
+                              width: 2,
+                            ),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(6),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  formatDuration(elapsed),
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.red,
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Center(
+                                    child: Text(
+                                      data['nomeProduto'] ?? 'Sem nome',
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(fontSize: 13),
+                                    ),
+                                  ),
+                                ),
+                                Text(
+                                  "Mesa: ${data['mesa'] ?? '?'}",
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
                   );
                 },
               ),
