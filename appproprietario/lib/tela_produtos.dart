@@ -79,6 +79,9 @@ class _TelaProdutosState extends State<TelaProdutos> {
                 children: [
                   Text(produto['descricao']),
                   const SizedBox(height: 5),
+                  Text("Preço: R\$ ${produto['preco']?.toStringAsFixed(2) ?? '0.00'}"), // NOVO
+                  Text("Produzido por: ${produto['tipo'] == 'cozinha' ? 'Cozinha' : 'Garçom'}"), // NOVO
+                  const SizedBox(height: 5),
                   Wrap(
                     spacing: 6,
                     children: tags
@@ -135,6 +138,8 @@ class AdicionarProdutoDialog extends StatefulWidget {
 class _AdicionarProdutoDialogState extends State<AdicionarProdutoDialog> {
   final TextEditingController nomeController = TextEditingController();
   final TextEditingController descricaoController = TextEditingController();
+  final TextEditingController precoController = TextEditingController(); // NOVO
+  String _tipoSelecionado = "cozinha"; // NOVO
   Uint8List? imagemBytes;
   final List<Map<String, dynamic>> _insumos = [];
   List<String> _tagsSelecionadas = [];
@@ -148,6 +153,8 @@ class _AdicionarProdutoDialogState extends State<AdicionarProdutoDialog> {
     if (widget.produtoExistente != null) {
       nomeController.text = widget.produtoExistente!['nome'] ?? '';
       descricaoController.text = widget.produtoExistente!['descricao'] ?? '';
+      precoController.text = (widget.produtoExistente!['preco']?.toString() ?? ''); // NOVO
+      _tipoSelecionado = widget.produtoExistente!['tipo'] ?? 'cozinha'; // NOVO
       _insumos.addAll(
           List<Map<String, dynamic>>.from(widget.produtoExistente!['insumos'] ?? []));
       _tagsSelecionadas =
@@ -185,7 +192,7 @@ class _AdicionarProdutoDialogState extends State<AdicionarProdutoDialog> {
   }
 
   Future<void> salvar() async {
-    if (nomeController.text.isEmpty || descricaoController.text.isEmpty) return;
+    if (nomeController.text.isEmpty || descricaoController.text.isEmpty || precoController.text.isEmpty) return; // NOVO
 
     try {
       // Mostra loading
@@ -210,6 +217,8 @@ class _AdicionarProdutoDialogState extends State<AdicionarProdutoDialog> {
       final produto = {
         'nome': nomeController.text,
         'descricao': descricaoController.text,
+        'preco': double.tryParse(precoController.text) ?? 0.0, // NOVO
+        'tipo': _tipoSelecionado, // NOVO
         'imagemUrl': imageUrl,
         'insumos': _insumos,
         'tags': _tagsSelecionadas,
@@ -277,6 +286,21 @@ class _AdicionarProdutoDialogState extends State<AdicionarProdutoDialog> {
             TextField(
               controller: descricaoController,
               decoration: const InputDecoration(labelText: "Descrição"),
+            ),
+            TextField( // NOVO
+              controller: precoController,
+              keyboardType: TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(labelText: "Preço (R\$)"),
+            ),
+            const SizedBox(height: 10),
+            DropdownButtonFormField<String>( // NOVO
+              value: _tipoSelecionado,
+              decoration: const InputDecoration(labelText: "Produzido por"),
+              items: const [
+                DropdownMenuItem(value: "cozinha", child: Text("Cozinha")),
+                DropdownMenuItem(value: "garcom", child: Text("Garçom")),
+              ],
+              onChanged: (valor) => setState(() => _tipoSelecionado = valor!),
             ),
             const SizedBox(height: 15),
             Row(
