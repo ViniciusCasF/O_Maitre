@@ -4,7 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:path_provider/path_provider.dart';
-import 'dart:html' as html; // <-- só é usado na Web
+import 'dart:html' as html; // <-- usado só na Web
 import 'dart:convert';
 import 'package:flutter/foundation.dart'; // para usar kIsWeb
 
@@ -26,6 +26,7 @@ class _TelaEstoqueState extends State<TelaEstoque> {
     final qtdController = TextEditingController(text: '0');
     final minimaController = TextEditingController(text: '0');
     final maximaController = TextEditingController(text: '0');
+    final precoController = TextEditingController(text: '0.00');
 
     showDialog(
       context: context,
@@ -52,6 +53,7 @@ class _TelaEstoqueState extends State<TelaEstoque> {
               TextField(controller: qtdController, decoration: const InputDecoration(labelText: "Quantidade atual"), keyboardType: TextInputType.number),
               TextField(controller: minimaController, decoration: const InputDecoration(labelText: "Quantidade mínima"), keyboardType: TextInputType.number),
               TextField(controller: maximaController, decoration: const InputDecoration(labelText: "Quantidade máxima"), keyboardType: TextInputType.number),
+              TextField(controller: precoController, decoration: const InputDecoration(labelText: "Preço (R\$)"), keyboardType: TextInputType.numberWithOptions(decimal: true)),
             ],
           ),
         ),
@@ -67,6 +69,7 @@ class _TelaEstoqueState extends State<TelaEstoque> {
                 'quantidade': int.tryParse(qtdController.text) ?? 0,
                 'minima': int.tryParse(minimaController.text) ?? 0,
                 'maxima': int.tryParse(maximaController.text) ?? 0,
+                'preco': double.tryParse(precoController.text.replaceAll(',', '.')) ?? 0.0,
                 'createdAt': FieldValue.serverTimestamp(),
               });
               Navigator.pop(context);
@@ -78,12 +81,13 @@ class _TelaEstoqueState extends State<TelaEstoque> {
     );
   }
 
-  // Edita insumo: abre diálogo e atualiza o documento
+  // Edita insumo
   void _editarInsumo(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
     final qtdController = TextEditingController(text: (data['quantidade'] ?? 0).toString());
     final minimaController = TextEditingController(text: (data['minima'] ?? 0).toString());
     final maximaController = TextEditingController(text: (data['maxima'] ?? 0).toString());
+    final precoController = TextEditingController(text: (data['preco'] ?? 0.0).toString());
 
     showDialog(
       context: context,
@@ -98,17 +102,11 @@ class _TelaEstoqueState extends State<TelaEstoque> {
               decoration: InputDecoration(labelText: "Quantidade atual (${data['unidade'] ?? ''})"),
             ),
             const SizedBox(height: 8),
-            TextField(
-              controller: minimaController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: "Quantidade mínima"),
-            ),
+            TextField(controller: minimaController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Quantidade mínima")),
             const SizedBox(height: 8),
-            TextField(
-              controller: maximaController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: "Quantidade máxima"),
-            ),
+            TextField(controller: maximaController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Quantidade máxima")),
+            const SizedBox(height: 8),
+            TextField(controller: precoController, keyboardType: TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: "Preço (R\$)")),
           ],
         ),
         actions: [
@@ -119,6 +117,7 @@ class _TelaEstoqueState extends State<TelaEstoque> {
                 'quantidade': int.tryParse(qtdController.text) ?? 0,
                 'minima': int.tryParse(minimaController.text) ?? 0,
                 'maxima': int.tryParse(maximaController.text) ?? 0,
+                'preco': double.tryParse(precoController.text.replaceAll(',', '.')) ?? 0.0,
                 'updatedAt': FieldValue.serverTimestamp(),
               });
               Navigator.pop(context);
@@ -130,7 +129,7 @@ class _TelaEstoqueState extends State<TelaEstoque> {
     );
   }
 
-  // Exporta insumos abaixo do mínimo para um arquivo .txt (salva em documentos do app)
+  // Exporta insumos abaixo do mínimo, mostrando quanto falta até o máximo
   Future<void> _exportarFaltando() async {
     final snap = await _db.collection('insumos').orderBy('nome').get();
     final docs = snap.docs;
@@ -139,17 +138,19 @@ class _TelaEstoqueState extends State<TelaEstoque> {
     for (final d in docs) {
       final data = d.data();
       final nome = data['nome'] ?? 'N/A';
-      final qtd = (data['quantidade'] ?? 0).toString();
-      final minima = (data['minima'] ?? 0).toString();
+      final qtd = (data['quantidade'] ?? 0) as int;
+      final minima = (data['minima'] ?? 0) as int;
+      final maxima = (data['maxima'] ?? 0) as int;
       final unidade = data['unidade'] ?? '';
-      if ((data['quantidade'] ?? 0) < (data['minima'] ?? 0)) {
-        faltando.add('$nome - ${qtd}${unidade} (mín: ${minima}${unidade})');
+
+      if (qtd < minima) {
+        final precisa = (maxima - qtd).clamp(0, maxima);
+        faltando.add('$nome - $precisa $unidade');
       }
     }
 
     if (faltando.isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Nenhum insumo em falta 🎉')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nenhum insumo em falta 🎉')));
       return;
     }
 
@@ -159,7 +160,6 @@ class _TelaEstoqueState extends State<TelaEstoque> {
 
     try {
       if (kIsWeb) {
-        // 🌐 --- WEB ---
         final bytes = utf8.encode(content);
         final blob = html.Blob([bytes]);
         final url = html.Url.createObjectUrlFromBlob(blob);
@@ -167,23 +167,15 @@ class _TelaEstoqueState extends State<TelaEstoque> {
           ..setAttribute("download", fileName)
           ..click();
         html.Url.revokeObjectUrl(url);
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Arquivo baixado pelo navegador ✅')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Arquivo baixado pelo navegador ✅')));
       } else {
-        // 📱 --- ANDROID / WINDOWS / iOS ---
         final dir = await getApplicationDocumentsDirectory();
         final file = File('${dir.path}/$fileName');
         await file.writeAsString(content);
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Arquivo salvo: ${file.path} ✅')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Arquivo salvo: ${file.path} ✅')));
       }
     } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Erro ao exportar: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao exportar: $e')));
     }
   }
 
@@ -194,6 +186,8 @@ class _TelaEstoqueState extends State<TelaEstoque> {
 
   @override
   Widget build(BuildContext context) {
+    final formatador = NumberFormat.simpleCurrency(locale: 'pt_BR');
+
     return Scaffold(
       appBar: AppBar(
         title: const Text("Controle de Estoque (Insumos)"),
@@ -206,17 +200,12 @@ class _TelaEstoqueState extends State<TelaEstoque> {
         stream: _db.collection('insumos').orderBy('nome').snapshots(),
         builder: (context, snapshot) {
           if (snapshot.hasError) return Center(child: Text('Erro: ${snapshot.error}'));
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
 
           final docs = snapshot.data!.docs;
-          // aplicamos o filtro localmente
           final lista = docs.where((d) {
             final data = d.data() as Map<String, dynamic>;
-            if (_filtroSelecionado == 1) {
-              return (data['quantidade'] ?? 0) < (data['minima'] ?? 0);
-            }
+            if (_filtroSelecionado == 1) return (data['quantidade'] ?? 0) < (data['minima'] ?? 0);
             return true;
           }).toList();
 
@@ -261,6 +250,7 @@ class _TelaEstoqueState extends State<TelaEstoque> {
                     final qtd = data['quantidade'] ?? 0;
                     final minima = data['minima'] ?? 0;
                     final maxima = data['maxima'] ?? 0;
+                    final preco = (data['preco'] ?? 0.0) as num;
                     final emFalta = qtd < minima;
 
                     return Card(
@@ -268,7 +258,7 @@ class _TelaEstoqueState extends State<TelaEstoque> {
                       child: ListTile(
                         leading: Icon(emFalta ? Icons.warning : Icons.check_circle, color: emFalta ? Colors.red : Colors.green),
                         title: Text(nome),
-                        subtitle: Text('Qtd: $qtd $unidade | Min: $minima | Max: $maxima'),
+                        subtitle: Text('Qtd: $qtd $unidade | Min: $minima | Max: $maxima\nPreço: ${formatador.format(preco)}'),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -285,10 +275,6 @@ class _TelaEstoqueState extends State<TelaEstoque> {
             ],
           );
         },
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _adicionarInsumo,
-        child: const Icon(Icons.add),
       ),
     );
   }
