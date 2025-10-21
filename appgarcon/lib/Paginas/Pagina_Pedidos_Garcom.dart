@@ -1,9 +1,10 @@
-
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-// Modelo reaproveitado
 class Pedido {
+  final String id;
   final String nomeProduto;
   final int mesa;
   final DateTime startTime;
@@ -12,6 +13,7 @@ class Pedido {
   bool entregue;
 
   Pedido({
+    required this.id,
     required this.nomeProduto,
     required this.mesa,
     required this.startTime,
@@ -29,37 +31,123 @@ class PaginaPedidosGarcom extends StatefulWidget {
 }
 
 class _PaginaPedidosGarcomState extends State<PaginaPedidosGarcom> {
+  String? garcomSelecionadoId;
+  String? garcomNome;
+  Color? garcomCor;
+  List<int> mesasDoGarcom = [];
   List<Pedido> pedidos = [];
-  List<Pedido> pedidosVisiveis = [];
-  Timer? timer;
+  StreamSubscription? _pedidoSubscription;
+  Timer? _timer; // 👈 Timer para atualizar o relógio
 
   @override
   void initState() {
     super.initState();
+    _carregarGarcomSalvo();
 
-    // Mock de pedidos
-    pedidos = List.generate(
-      10,
-          (i) => Pedido(
-        nomeProduto: i % 2 == 0 ? "Cerveja" : "Pizza",
-        mesa: i + 1,
-        startTime: DateTime.now(),
-        descricao: i % 2 == 0 ? "Bem gelada" : "Sem cebola",
-      ),
-    );
-
-    pedidosVisiveis = List.from(pedidos);
-
-    // Atualiza a tela a cada segundo
-    timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      setState(() {});
+    // Atualiza os timers a cada segundo
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
     });
   }
 
-  @override
-  void dispose() {
-    timer?.cancel();
-    super.dispose();
+  Future<void> _carregarGarcomSalvo() async {
+    final prefs = await SharedPreferences.getInstance();
+    final id = prefs.getString('garcomSelecionadoId');
+    final nome = prefs.getString('garcomNome');
+    final corHex = prefs.getString('garcomCor');
+
+    if (id != null && nome != null && corHex != null) {
+      setState(() {
+        garcomSelecionadoId = id;
+        garcomNome = nome;
+        garcomCor = Color(int.parse(corHex.replaceFirst('#', '0xff')));
+      });
+      _carregarMesasEGatilharPedidos();
+    }
+  }
+
+  Future<void> _selecionarGarcom() async {
+    final snapshot =
+    await FirebaseFirestore.instance.collection('garcons').get();
+
+    showModalBottomSheet(
+      context: context,
+      builder: (context) {
+        return ListView(
+          children: snapshot.docs.map((doc) {
+            final nome = doc['nome'];
+            final corHex = doc['cor'];
+            final cor = Color(int.parse(corHex.replaceFirst('#', '0xff')));
+
+            return ListTile(
+              leading: CircleAvatar(backgroundColor: cor),
+              title: Text(nome),
+              onTap: () async {
+                Navigator.pop(context);
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setString('garcomSelecionadoId', doc.id);
+                await prefs.setString('garcomNome', nome);
+                await prefs.setString('garcomCor', corHex);
+
+                setState(() {
+                  garcomSelecionadoId = doc.id;
+                  garcomNome = nome;
+                  garcomCor = cor;
+                });
+
+                _carregarMesasEGatilharPedidos();
+              },
+            );
+          }).toList(),
+        );
+      },
+    );
+  }
+
+  Future<void> _carregarMesasEGatilharPedidos() async {
+    if (garcomSelecionadoId == null) return;
+
+    final mesasSnapshot = await FirebaseFirestore.instance
+        .collection('mesas')
+        .where('garcomId', isEqualTo: garcomSelecionadoId)
+        .get();
+
+    mesasDoGarcom =
+        mesasSnapshot.docs.map((doc) => doc['numero'] as int).toList();
+
+    _ouvirPedidos();
+  }
+
+  void _ouvirPedidos() {
+    _pedidoSubscription?.cancel();
+    if (mesasDoGarcom.isEmpty) return;
+
+    _pedidoSubscription = FirebaseFirestore.instance
+        .collection('pedidos')
+        .where('mesa', whereIn: mesasDoGarcom)
+        .where('status', isEqualTo: 1) // 👈 apenas pedidos prontos
+        .snapshots()
+        .listen((snapshot) {
+      setState(() {
+        pedidos = snapshot.docs.map((doc) {
+          final data = doc.data();
+          return Pedido(
+            id: doc.id,
+            nomeProduto: data['nomeProduto'] ?? 'Sem nome',
+            mesa: data['mesa'],
+            startTime: (data['startTime'] as Timestamp).toDate(),
+            descricao: data['descricao'] ?? '',
+          );
+        }).toList();
+      });
+    });
+  }
+
+  Future<void> _entregarPedido(Pedido pedido) async {
+    await FirebaseFirestore.instance
+        .collection('pedidos')
+        .doc(pedido.id)
+        .update({'status': 0});
   }
 
   String formatDuration(Duration d) {
@@ -70,84 +158,69 @@ class _PaginaPedidosGarcomState extends State<PaginaPedidosGarcom> {
   void mostrarDetalhes(Pedido pedido) {
     showDialog(
       context: context,
-      barrierDismissible: true,
       builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setStateDialog) {
-            Timer.periodic(const Duration(seconds: 1), (timer) {
-              if (!Navigator.of(context).canPop()) {
-                timer.cancel();
-              } else {
-                setStateDialog(() {});
-              }
-            });
-
-            return Dialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      formatDuration(DateTime.now().difference(pedido.startTime)),
-                      style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.red,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      pedido.nomeProduto,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      pedido.descricao,
-                      style: const TextStyle(fontSize: 15),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 20),
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor:
-                        pedido.iniciado ? Colors.green : Colors.blue,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        minimumSize: const Size(double.infinity, 45),
-                      ),
-                      onPressed: () {
-                        setState(() {
-                          if (!pedido.iniciado) {
-                            pedido.iniciado = true;
-                          } else {
-                            pedido.entregue = true;
-                            pedidos.remove(pedido);
-                          }
-                          Navigator.pop(context);
-                        });
-                      },
-                      child: Text(
-                        pedido.iniciado ? "Entregar pedido" : "Confirmar pedido",
-                        style: const TextStyle(color: Colors.white),
-                      ),
-                    ),
-                  ],
+        return Dialog(
+          shape:
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  formatDuration(DateTime.now().difference(pedido.startTime)),
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.red,
+                  ),
                 ),
-              ),
-            );
-          },
+                const SizedBox(height: 16),
+                Text(
+                  pedido.nomeProduto,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  pedido.descricao,
+                  style: const TextStyle(fontSize: 15),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    minimumSize: const Size(double.infinity, 45),
+                  ),
+                  onPressed: () async {
+                    await _entregarPedido(pedido);
+                    Navigator.pop(context);
+                  },
+                  child: const Text(
+                    "Marcar como entregue",
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+          ),
         );
       },
     );
+  }
+
+  @override
+  void dispose() {
+    _pedidoSubscription?.cancel();
+    _timer?.cancel(); // 👈 cancela o timer
+    super.dispose();
   }
 
   @override
@@ -157,10 +230,35 @@ class _PaginaPedidosGarcomState extends State<PaginaPedidosGarcom> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Pedidos (Garçom)"),
         backgroundColor: Colors.blue,
+        title: Row(
+          children: [
+            if (garcomCor != null)
+              CircleAvatar(backgroundColor: garcomCor, radius: 10),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                garcomNome != null
+                    ? "Garçom: $garcomNome"
+                    : "Selecione o garçom",
+                style: const TextStyle(fontSize: 18),
+              ),
+            ),
+            TextButton(
+              onPressed: _selecionarGarcom,
+              child: const Text(
+                "Trocar",
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        ),
       ),
-      body: GridView.builder(
+      body: garcomSelecionadoId == null
+          ? const Center(
+        child: Text("Escolha um garçom para visualizar os pedidos."),
+      )
+          : GridView.builder(
         padding: const EdgeInsets.all(10),
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: colunas,
@@ -168,9 +266,9 @@ class _PaginaPedidosGarcomState extends State<PaginaPedidosGarcom> {
           mainAxisSpacing: 8,
           childAspectRatio: 0.9,
         ),
-        itemCount: pedidosVisiveis.length,
+        itemCount: pedidos.length,
         itemBuilder: (context, index) {
-          final pedido = pedidosVisiveis[index];
+          final pedido = pedidos[index];
           final elapsed = DateTime.now().difference(pedido.startTime);
 
           return GestureDetector(
@@ -178,10 +276,7 @@ class _PaginaPedidosGarcomState extends State<PaginaPedidosGarcom> {
             child: Card(
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
-                side: BorderSide(
-                  color: pedido.iniciado ? Colors.green : Colors.black,
-                  width: 2,
-                ),
+                side: const BorderSide(color: Colors.green, width: 2),
               ),
               child: Padding(
                 padding: const EdgeInsets.all(6),
@@ -222,4 +317,3 @@ class _PaginaPedidosGarcomState extends State<PaginaPedidosGarcom> {
     );
   }
 }
-
