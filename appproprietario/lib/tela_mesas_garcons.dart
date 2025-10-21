@@ -14,13 +14,26 @@ class _TelaMesasGarconsState extends State<TelaMesasGarcons> {
   final _firestore = FirebaseFirestore.instance;
 
   // =============================================================
-  // Adiciona uma nova mesa no banco
+  // Adiciona uma nova mesa
   // =============================================================
   Future<void> _adicionarMesa() async {
-    final mesas = await _firestore.collection('mesas').get();
-    int proximoNumero = mesas.docs.isEmpty
-        ? 1
-        : (mesas.docs.map((m) => m['numero'] as int).reduce((a, b) => a > b ? a : b) + 1);
+    final mesasSnapshot = await _firestore.collection('mesas').get();
+    final numerosExistentes = mesasSnapshot.docs
+        .map((m) => m['numero'] as int)
+        .toList()
+      ..sort();
+
+    int proximoNumero = 1;
+
+    // Encontra o menor número que ainda não existe
+    for (int i = 1; i <= numerosExistentes.length; i++) {
+      if (!numerosExistentes.contains(i)) {
+        proximoNumero = i;
+        break;
+      } else {
+        proximoNumero = numerosExistentes.last + 1;
+      }
+    }
 
     await _firestore.collection('mesas').add({
       'numero': proximoNumero,
@@ -28,8 +41,9 @@ class _TelaMesasGarconsState extends State<TelaMesasGarcons> {
     });
   }
 
+
   // =============================================================
-  // Adiciona um novo garçom com nome e cor escolhida
+  // Adiciona novo garçom
   // =============================================================
   Future<void> _adicionarGarcom() async {
     final nomeController = TextEditingController();
@@ -83,9 +97,9 @@ class _TelaMesasGarconsState extends State<TelaMesasGarcons> {
   }
 
   // =============================================================
-  // Mostra o QR Code da mesa (número)
+  // Mostra o QR Code e botão de remover mesa
   // =============================================================
-  void _mostrarQrCodeMesa(int numero) {
+  void _mostrarQrCodeMesa(String mesaId, int numero) {
     showDialog(
       context: context,
       builder: (_) => Dialog(
@@ -112,6 +126,35 @@ class _TelaMesasGarconsState extends State<TelaMesasGarcons> {
                 style: const TextStyle(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: () async {
+                  final confirm = await showDialog<bool>(
+                    context: context,
+                    builder: (_) => AlertDialog(
+                      title: const Text("Remover mesa"),
+                      content: const Text("Tem certeza que deseja remover esta mesa?"),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, false),
+                          child: const Text("Cancelar"),
+                        ),
+                        ElevatedButton(
+                          onPressed: () => Navigator.pop(context, true),
+                          child: const Text("Remover"),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (confirm == true) {
+                    await _firestore.collection('mesas').doc(mesaId).delete();
+                    if (context.mounted) Navigator.pop(context);
+                  }
+                },
+                icon: const Icon(Icons.delete, color: Colors.white),
+                label: const Text("Remover Mesa"),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              ),
+              const SizedBox(height: 8),
               TextButton(
                 onPressed: () => Navigator.pop(context),
                 child: const Text("Fechar"),
@@ -124,7 +167,7 @@ class _TelaMesasGarconsState extends State<TelaMesasGarcons> {
   }
 
   // =============================================================
-  // Cria o card visual de um garçom
+  // Card visual do garçom
   // =============================================================
   Widget _garcomCard(String garcom, Color cor, {bool arrastando = false}) {
     return Card(
@@ -145,14 +188,14 @@ class _TelaMesasGarconsState extends State<TelaMesasGarcons> {
   }
 
   // =============================================================
-  // CONSTRUÇÃO DA TELA PRINCIPAL
+  // CONSTRUÇÃO DA TELA
   // =============================================================
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Row(
         children: [
-          // ======================== COLUNA DE MESAS ========================
+          // ======================== MESAS ========================
           Expanded(
             flex: 7,
             child: Column(
@@ -175,7 +218,6 @@ class _TelaMesasGarconsState extends State<TelaMesasGarcons> {
                   ),
                 ),
 
-                // 🔹 Lista de mesas em tempo real
                 Expanded(
                   child: StreamBuilder<QuerySnapshot>(
                     stream: _firestore.collection('mesas').orderBy('numero').snapshots(),
@@ -223,7 +265,7 @@ class _TelaMesasGarconsState extends State<TelaMesasGarcons> {
                                 },
                                 builder: (context, candidateData, rejectedData) {
                                   return GestureDetector(
-                                    onTap: () => _mostrarQrCodeMesa(numero),
+                                    onTap: () => _mostrarQrCodeMesa(mesaDoc.id, numero),
                                     child: Container(
                                       decoration: BoxDecoration(
                                         color: corMesa,
@@ -273,7 +315,7 @@ class _TelaMesasGarconsState extends State<TelaMesasGarcons> {
             endIndent: 12,
           ),
 
-          // ======================== COLUNA DE GARÇONS ========================
+          // ======================== GARÇONS ========================
           Expanded(
             flex: 3,
             child: Column(
@@ -296,41 +338,94 @@ class _TelaMesasGarconsState extends State<TelaMesasGarcons> {
                   ),
                 ),
 
-                // 🔹 Lista de garçons em tempo real
                 Expanded(
-                  child: StreamBuilder<QuerySnapshot>(
-                    stream: _firestore.collection('garcons').snapshots(),
-                    builder: (context, snapshot) {
-                      if (!snapshot.hasData) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
+                  child: Column(
+                    children: [
+                      // 🔹 Lista de garçons
+                      Expanded(
+                        child: StreamBuilder<QuerySnapshot>(
+                          stream: _firestore.collection('garcons').snapshots(),
+                          builder: (context, snapshot) {
+                            if (!snapshot.hasData) {
+                              return const Center(child: CircularProgressIndicator());
+                            }
 
-                      final garconsDocs = snapshot.data!.docs;
+                            final garconsDocs = snapshot.data!.docs;
 
-                      return ListView.builder(
-                        padding: const EdgeInsets.all(12),
-                        itemCount: garconsDocs.length,
-                        itemBuilder: (context, index) {
-                          final garcom = garconsDocs[index];
-                          final nome = garcom['nome'];
-                          final corHex = garcom['cor'] ?? "795548";
-                          final cor = Color(int.parse(corHex.replaceFirst('#', '0xff')));
+                            return ListView.builder(
+                              padding: const EdgeInsets.all(12),
+                              itemCount: garconsDocs.length,
+                              itemBuilder: (context, index) {
+                                final garcom = garconsDocs[index];
+                                final nome = garcom['nome'];
+                                final corHex = garcom['cor'] ?? "795548";
+                                final cor = Color(int.parse(corHex.replaceFirst('#', '0xff')));
 
-                          return Draggable<String>(
-                            data: garcom.id,
-                            feedback: Material(
-                              color: Colors.transparent,
-                              child: _garcomCard(nome, cor, arrastando: true),
+                                return Draggable<String>(
+                                  data: garcom.id,
+                                  feedback: Material(
+                                    color: Colors.transparent,
+                                    child: _garcomCard(nome, cor, arrastando: true),
+                                  ),
+                                  childWhenDragging: Opacity(
+                                    opacity: 0.3,
+                                    child: _garcomCard(nome, cor),
+                                  ),
+                                  child: _garcomCard(nome, cor),
+                                );
+                              },
+                            );
+                          },
+                        ),
+                      ),
+
+                      // 🔻 Área de descarte para remover garçons
+                      DragTarget<String>(
+                        onAccept: (garcomId) async {
+                          final confirm = await showDialog<bool>(
+                            context: context,
+                            builder: (_) => AlertDialog(
+                              title: const Text("Remover garçom"),
+                              content: const Text("Deseja realmente remover este garçom?"),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context, false),
+                                  child: const Text("Cancelar"),
+                                ),
+                                ElevatedButton(
+                                  onPressed: () => Navigator.pop(context, true),
+                                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                                  child: const Text("Remover"),
+                                ),
+                              ],
                             ),
-                            childWhenDragging: Opacity(
-                              opacity: 0.3,
-                              child: _garcomCard(nome, cor),
+                          );
+                          if (confirm == true) {
+                            await _firestore.collection('garcons').doc(garcomId).delete();
+                          }
+                        },
+                        builder: (context, candidateData, rejectedData) {
+                          return Container(
+                            margin: const EdgeInsets.all(8),
+                            height: 60,
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              color: candidateData.isEmpty ? Colors.red[100] : Colors.red[300],
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.red, width: 2),
                             ),
-                            child: _garcomCard(nome, cor),
+                            child: const Center(
+                              child: Text(
+                                "🗑️ Arraste aqui para remover garçom",
+                                style: TextStyle(
+                                    color: Colors.red,
+                                    fontWeight: FontWeight.bold),
+                              ),
+                            ),
                           );
                         },
-                      );
-                    },
+                      ),
+                    ],
                   ),
                 ),
               ],
