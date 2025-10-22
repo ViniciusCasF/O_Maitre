@@ -5,18 +5,9 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="b9faa361-18ff-4752-baa7-6e16696d11a8" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/caches/deviceStreaming.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/appgarcon/lib/Paginas/Pagina_Pedidos_Garcom.dart" beforeDir="false" afterPath="$PROJECT_DIR$/appgarcon/lib/Paginas/Pagina_Pedidos_Garcom.dart" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/appgarcon/linux/flutter/generated_plugin_registrant.cc" beforeDir="false" afterPath="$PROJECT_DIR$/appgarcon/linux/flutter/generated_plugin_registrant.cc" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/appgarcon/linux/flutter/generated_plugin_registrant.h" beforeDir="false" afterPath="$PROJECT_DIR$/appgarcon/linux/flutter/generated_plugin_registrant.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/appgarcon/linux/flutter/generated_plugins.cmake" beforeDir="false" afterPath="$PROJECT_DIR$/appgarcon/linux/flutter/generated_plugins.cmake" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/appgarcon/macos/Flutter/GeneratedPluginRegistrant.swift" beforeDir="false" afterPath="$PROJECT_DIR$/appgarcon/macos/Flutter/GeneratedPluginRegistrant.swift" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/appgarcon/pubspec.lock" beforeDir="false" afterPath="$PROJECT_DIR$/appgarcon/pubspec.lock" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/appgarcon/pubspec.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/appgarcon/pubspec.yaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/appgarcon/windows/flutter/generated_plugin_registrant.cc" beforeDir="false" afterPath="$PROJECT_DIR$/appgarcon/windows/flutter/generated_plugin_registrant.cc" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/appgarcon/windows/flutter/generated_plugin_registrant.h" beforeDir="false" afterPath="$PROJECT_DIR$/appgarcon/windows/flutter/generated_plugin_registrant.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/appgarcon/windows/flutter/generated_plugins.cmake" beforeDir="false" afterPath="$PROJECT_DIR$/appgarcon/windows/flutter/generated_plugins.cmake" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/appgarcon/lib/Paginas/PaginaLeitorMesa.dart" beforeDir="false" afterPath="$PROJECT_DIR$/appgarcon/lib/Paginas/PaginaLeitorMesa.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/appgarcon/lib/Paginas/Pagina_Cardapio.dart" beforeDir="false" afterPath="$PROJECT_DIR$/appgarcon/lib/Paginas/Pagina_Cardapio.dart" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -49,7 +40,7 @@
     "cidr.known.project.marker": "true",
     "dart.analysis.tool.window.visible": "false",
     "git-widget-placeholder": "App__Garçon",
-    "last_opened_file_path": "E:/Faculdade/6 Periodo/Projeto Integrado/O_Maitre/appgarcon/lib/Paginas",
+    "last_opened_file_path": "/home/vincius_castro_filaretti/MEGA/Faculdade 6 Periodo/Projeto Integrado/Repositório/O_Maitre/appgarcon/lib/Paginas",
     "show.migrate.to.gradle.popup": "false"
   }
 }]]></component>

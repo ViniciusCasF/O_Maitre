@@ -20,6 +20,7 @@ class _PaginaCardapioState extends State<PaginaCardapio> {
 
   List<Map<String, dynamic>> produtos = [];
   List<String> filtros = [];
+  bool cozinhaAberta = true; // valor padrão
 
   @override
   void initState() {
@@ -29,9 +30,25 @@ class _PaginaCardapioState extends State<PaginaCardapio> {
 
   Future<void> carregarTudo() async {
     await Future.wait([
-      carregarProdutos(),
+      carregarEstadoCozinha(),
       carregarTags(),
     ]);
+    await carregarProdutos();
+  }
+
+  Future<void> carregarEstadoCozinha() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('estados')
+          .doc('cozinha')
+          .get();
+
+      if (doc.exists && doc.data()?['aberta'] != null) {
+        cozinhaAberta = doc['aberta'] == true;
+      }
+    } catch (e) {
+      print('Erro ao carregar estado da cozinha: $e');
+    }
   }
 
   Future<void> carregarProdutos() async {
@@ -52,7 +69,15 @@ class _PaginaCardapioState extends State<PaginaCardapio> {
           'descricao': data['descricao'] ?? '',
           'imagem': data['imagemUrl'] ?? '',
           'tags': tags,
+          'tipo': data['tipo'] ?? 'garcom',
+          'preco': data['preco'] ?? 0,
         };
+      }).where((produto) {
+        // se a cozinha estiver fechada, mostrar só os produtos do garçom
+        if (!cozinhaAberta) {
+          return produto['tipo'] == 'garcom';
+        }
+        return true;
       }).toList();
 
       setState(() {
@@ -107,6 +132,17 @@ class _PaginaCardapioState extends State<PaginaCardapio> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (!cozinhaAberta)
+              Container(
+                color: Colors.red.shade50,
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                child: const Text(
+                  '🍳 A cozinha está encerrada. Apenas produtos do garçom estão disponíveis.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w600),
+                ),
+              ),
             // Filtros (tags)
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -121,7 +157,6 @@ class _PaginaCardapioState extends State<PaginaCardapio> {
                 ],
               ),
             ),
-
             // Lista de produtos
             Expanded(
               child: produtosFiltrados.isEmpty
@@ -145,7 +180,7 @@ class _PaginaCardapioState extends State<PaginaCardapio> {
                         MaterialPageRoute(
                           builder: (_) => PaginaProduto(
                             nome: produto['nome'],
-                            preco: 0,
+                            preco: produto['preco'],
                             imagem: produto['imagem'],
                             descricao: produto['descricao'],
                           ),
@@ -156,7 +191,7 @@ class _PaginaCardapioState extends State<PaginaCardapio> {
                     },
                     child: ProdutoCard(
                       nome: produto['nome'],
-                      preco: 0,
+                      preco: produto['preco'],
                       imagem: produto['imagem'],
                     ),
                   );
