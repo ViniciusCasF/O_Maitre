@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import '../Modelos/order_manager.dart';
 import 'Pagina_Cardapio.dart';
 
@@ -14,114 +15,56 @@ class PaginaLeitorMesa extends StatefulWidget {
 }
 
 class _PaginaLeitorMesaState extends State<PaginaLeitorMesa> {
-  final FirebaseFirestore db = FirebaseFirestore.instance;
   bool enviando = false;
   bool leituraConcluida = false;
-  bool cozinhaAberta = true; // estado padrão
-
-  @override
-  void initState() {
-    super.initState();
-    carregarEstadoCozinha();
-  }
-
-  Future<void> carregarEstadoCozinha() async {
-    try {
-      final doc = await db.collection('estados').doc('cozinha').get();
-      if (doc.exists && doc.data()?['aberta'] != null) {
-        setState(() {
-          cozinhaAberta = doc['aberta'] == true;
-        });
-      }
-    } catch (e) {
-      print('Erro ao carregar estado da cozinha: $e');
-    }
-  }
+  final FirebaseFunctions functions = FirebaseFunctions.instance;
+  final FirebaseFirestore db = FirebaseFirestore.instance;
 
   Future<void> _enviarPedidos(int numeroMesa) async {
     setState(() => enviando = true);
 
     try {
-      // Verifica novamente o estado da cozinha antes de enviar
-      await carregarEstadoCozinha();
+      // Monta a estrutura do pedido
+      final List<Map<String, dynamic>> itens = widget.order.items.map((item) {
+        return {
+          'nome': item.name,
+          'quantidade': item.qty,
+        };
+      }).toList();
 
-      final pedidosRef = db.collection('pedidos');
-      final produtosRef = db.collection('produtos');
+      // Chama a Cloud Function
+      final result = await functions.httpsCallable('verificarEPedir').call({
+        'mesa': numeroMesa,
+        'itens': itens,
+      });
 
-      // 🔍 Verifica se há itens de cozinha quando a cozinha está fechada
-      if (!cozinhaAberta) {
-        bool possuiItensCozinha = false;
+      final data = result.data;
 
-        for (var item in widget.order.items) {
-          // Busca o produto no Firestore pelo nome
-          final query = await produtosRef.where('nome', isEqualTo: item.name).limit(1).get();
-          if (query.docs.isNotEmpty) {
-            final tipo = query.docs.first.data()['tipo'] ?? '';
-            if (tipo == 'cozinha') {
-              possuiItensCozinha = true;
-              break;
-            }
-          }
+      if (data['sucesso'] == true) {
+        widget.order.clear();
+        if (mounted) {
+          await _mostrarPopupSucesso(context);
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const PaginaCardapio()),
+                (r) => false,
+          );
         }
-
-        if (possuiItensCozinha) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                  '❌ A cozinha está encerrada. Remova os itens de cozinha para enviar o pedido.',
-                ),
-                backgroundColor: Colors.redAccent,
-              ),
-            );
-          }
-          setState(() => enviando = false);
-          return;
-        }
-      }
-
-      // ✅ Envia os pedidos normalmente
-      for (var item in widget.order.items) {
-        // Busca o tipo do produto para definir o status corretamente
-        final query = await produtosRef.where('nome', isEqualTo: item.name).limit(1).get();
-        String tipo = 'garcom';
-        if (query.docs.isNotEmpty) {
-          tipo = query.docs.first.data()['tipo'] ?? 'garcom';
-        }
-
-        final status = (tipo == 'garcom') ? 1 : 2;
-
-        for (int i = 0; i < item.qty; i++) {
-          await pedidosRef.add({
-            'nomeProduto': item.name,
-            'mesa': numeroMesa,
-            'descricao': item.description ?? '',
-            'status': status, // 1 = garçom, 2 = cozinha
-            'startTime': FieldValue.serverTimestamp(),
-          });
-        }
-      }
-
-      widget.order.clear();
-
-      if (mounted) {
-        await _mostrarPopupSucesso(context);
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const PaginaCardapio()),
-              (r) => false,
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Erro: ${data['motivo']}'),
+            backgroundColor: Colors.redAccent,
+          ),
         );
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao enviar pedidos: $e')),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erro ao enviar pedido: $e')),
+      );
     } finally {
       if (mounted) setState(() => enviando = false);
     }
   }
-
 
   Future<void> _mostrarPopupSucesso(BuildContext context) async {
     return showDialog(
@@ -150,7 +93,6 @@ class _PaginaLeitorMesaState extends State<PaginaLeitorMesa> {
 
     try {
       final numeroMesa = int.tryParse(code.replaceAll(RegExp(r'[^0-9]'), ''));
-
       if (numeroMesa == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('QR Code inválido.')),
@@ -176,9 +118,7 @@ class _PaginaLeitorMesaState extends State<PaginaLeitorMesa> {
       ),
       body: Stack(
         children: [
-          MobileScanner(
-            onDetect: _onDetect,
-          ),
+          MobileScanner(onDetect: _onDetect),
           Center(
             child: Container(
               width: 250,
@@ -206,24 +146,6 @@ class _PaginaLeitorMesaState extends State<PaginaLeitorMesa> {
               style: TextStyle(color: Colors.white, fontSize: 16),
             ),
           ),
-          if (!cozinhaAberta)
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: Container(
-                color: Colors.red.shade50,
-                padding: const EdgeInsets.all(12),
-                child: const Text(
-                  '🍳 A cozinha está encerrada. Apenas pedidos de garçom serão aceitos.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.redAccent,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
         ],
       ),
     );
