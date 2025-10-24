@@ -53,10 +53,13 @@ class _PaginaCardapioState extends State<PaginaCardapio> {
 
   Future<void> carregarProdutos() async {
     try {
-      final querySnapshot =
-      await FirebaseFirestore.instance.collection('produtos').get();
+      final firestore = FirebaseFirestore.instance;
+      final produtosSnapshot = await firestore.collection('produtos').get();
+      final insumosRef = firestore.collection('insumos');
 
-      final novosProdutos = querySnapshot.docs.map((doc) {
+      List<Map<String, dynamic>> produtosDisponiveis = [];
+
+      for (var doc in produtosSnapshot.docs) {
         final data = doc.data();
 
         List<String> tags = [];
@@ -64,29 +67,63 @@ class _PaginaCardapioState extends State<PaginaCardapio> {
           tags = List<String>.from(data['tags']);
         }
 
-        return {
-          'nome': data['nome'] ?? 'Sem nome',
-          'descricao': data['descricao'] ?? '',
-          'imagem': data['imagemUrl'] ?? '',
-          'tags': tags,
-          'tipo': data['tipo'] ?? 'garcom',
-          'preco': data['preco'] ?? 0,
-        };
-      }).where((produto) {
-        // se a cozinha estiver fechada, mostrar só os produtos do garçom
-        if (!cozinhaAberta) {
-          return produto['tipo'] == 'garcom';
+        // ✅ 1. Verifica insumos do produto
+        final List<dynamic>? insumos = data['insumos'] as List<dynamic>?;
+
+        bool possuiEstoqueSuficiente = true;
+
+        if (insumos != null && insumos.isNotEmpty) {
+          for (var insumoMap in insumos) {
+            final nomeInsumo = insumoMap['nome']?.toString() ?? '';
+            final qtdStr = insumoMap['quantidade']?.toString() ?? '0';
+            final qtdNecessaria = double.tryParse(qtdStr.replaceAll(',', '.')) ?? 0.0;
+
+            if (nomeInsumo.isEmpty) continue;
+
+            // Busca insumo no Firestore
+            final query = await insumosRef.where('nome', isEqualTo: nomeInsumo).limit(1).get();
+
+            if (query.docs.isEmpty) {
+              possuiEstoqueSuficiente = false;
+              break;
+            }
+
+            final insumoData = query.docs.first.data();
+            final qtdAtual = (insumoData['quantidade'] ?? 0).toDouble();
+
+            if (qtdAtual < qtdNecessaria) {
+              possuiEstoqueSuficiente = false;
+              break;
+            }
+          }
         }
-        return true;
-      }).toList();
+
+        // ✅ 2. Se tiver estoque, adiciona o produto
+        if (possuiEstoqueSuficiente) {
+          // Se a cozinha estiver fechada, só mostra produtos do garçom
+          if (!cozinhaAberta && (data['tipo'] ?? 'garcom') != 'garcom') {
+            continue;
+          }
+
+          produtosDisponiveis.add({
+            'nome': data['nome'] ?? 'Sem nome',
+            'descricao': data['descricao'] ?? '',
+            'imagem': data['imagemUrl'] ?? '',
+            'tags': tags,
+            'tipo': data['tipo'] ?? 'garcom',
+            'preco': data['preco'] ?? 0,
+          });
+        }
+      }
 
       setState(() {
-        produtos = novosProdutos;
+        produtos = produtosDisponiveis;
       });
     } catch (e) {
       print('Erro ao carregar produtos: $e');
     }
   }
+
 
   Future<void> carregarTags() async {
     try {
