@@ -17,12 +17,23 @@ class _PaginaLeitorMesaState extends State<PaginaLeitorMesa> {
   final FirebaseFirestore db = FirebaseFirestore.instance;
   bool enviando = false;
   bool leituraConcluida = false;
-  bool cozinhaAberta = true; // estado padrão
+  bool cozinhaAberta = true;
+  bool restauranteAberto = true; // ✅ NOVO: estado do restaurante
 
   @override
   void initState() {
     super.initState();
-    carregarEstadoCozinha();
+    carregarEstados();
+  }
+
+  // =======================================================
+  // ✅ CARREGAR ESTADOS DE COZINHA E RESTAURANTE
+  // =======================================================
+  Future<void> carregarEstados() async {
+    await Future.wait([
+      carregarEstadoCozinha(),
+      carregarEstadoRestaurante(),
+    ]);
   }
 
   Future<void> carregarEstadoCozinha() async {
@@ -38,15 +49,28 @@ class _PaginaLeitorMesaState extends State<PaginaLeitorMesa> {
     }
   }
 
+  Future<void> carregarEstadoRestaurante() async {
+    try {
+      final doc = await db.collection('estados').doc('restaurante').get();
+      if (doc.exists && doc.data()?['aberto'] != null) {
+        setState(() {
+          restauranteAberto = doc['aberto'] == true;
+        });
+      }
+    } catch (e) {
+      print('Erro ao carregar estado do restaurante: $e');
+    }
+  }
+
+  // =======================================================
+  // VERIFICA E ATUALIZA ESTOQUE
+  // =======================================================
   Future<bool> verificarEAtualizarEstoque() async {
     final produtosRef = db.collection('produtos');
     final insumosRef = db.collection('insumos');
-
-    // 🔹 1. Mapa de consumo total simulado (sem alterar ainda)
     Map<String, double> consumoTotal = {};
 
     for (var item in widget.order.items) {
-      // Busca o produto
       final query = await produtosRef.where('nome', isEqualTo: item.name).limit(1).get();
       if (query.docs.isEmpty) continue;
 
@@ -67,22 +91,14 @@ class _PaginaLeitorMesaState extends State<PaginaLeitorMesa> {
       }
     }
 
-    // 🔹 2. Verifica se há estoque suficiente para todos
+    // Verifica se há estoque suficiente
     for (var entry in consumoTotal.entries) {
       final nomeInsumo = entry.key;
       final qtdNecessaria = entry.value;
 
       final insumoQuery = await insumosRef.where('nome', isEqualTo: nomeInsumo).limit(1).get();
       if (insumoQuery.docs.isEmpty) {
-        // insumo não existe no banco → cancela o pedido
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('❌ Pedido cancelado! O insumo "$nomeInsumo" não foi encontrado no estoque.'),
-              backgroundColor: Colors.redAccent,
-            ),
-          );
-        }
+        _mostrarErro('❌ Pedido cancelado! O insumo "$nomeInsumo" não foi encontrado no estoque.');
         return false;
       }
 
@@ -90,21 +106,13 @@ class _PaginaLeitorMesaState extends State<PaginaLeitorMesa> {
       final qtdAtual = (insumoData['quantidade'] ?? 0).toDouble();
 
       if (qtdAtual < qtdNecessaria) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                '❌ Pedido cancelado! O insumo "$nomeInsumo" está em falta (necessário ${qtdNecessaria.toStringAsFixed(2)}, disponível ${qtdAtual.toStringAsFixed(2)}).',
-              ),
-              backgroundColor: Colors.redAccent,
-            ),
-          );
-        }
-        return false; // Falha — cancela tudo
+        _mostrarErro(
+            '❌ Pedido cancelado! O insumo "$nomeInsumo" está em falta (necessário ${qtdNecessaria.toStringAsFixed(2)}, disponível ${qtdAtual.toStringAsFixed(2)}).');
+        return false;
       }
     }
 
-    // 🔹 3. Se tudo certo, atualiza o estoque (consome os insumos)
+    // Atualiza o estoque (consome os insumos)
     for (var entry in consumoTotal.entries) {
       final nomeInsumo = entry.key;
       final qtdConsumir = entry.value;
@@ -122,20 +130,29 @@ class _PaginaLeitorMesaState extends State<PaginaLeitorMesa> {
     return true;
   }
 
-
-
+  // =======================================================
+  // ENVIO DO PEDIDO
+  // =======================================================
   Future<void> _enviarPedidos(int numeroMesa) async {
     setState(() => enviando = true);
 
     try {
-      // ✅ 1. Verifica e atualiza estoque (só se tudo estiver ok)
+      // ✅ Verifica o estado do restaurante antes de qualquer coisa
+      await carregarEstadoRestaurante();
+      if (!restauranteAberto) {
+        _mostrarErro('❌ O restaurante está encerrado. Não é possível enviar pedidos no momento.');
+        setState(() => enviando = false);
+        return;
+      }
+
+      // ✅ Verifica e atualiza estoque
       final estoqueOk = await verificarEAtualizarEstoque();
       if (!estoqueOk) {
         setState(() => enviando = false);
-        return; // Cancela o envio sem mexer no pedido
+        return;
       }
 
-      // ✅ 2. Verifica o estado da cozinha
+      // ✅ Verifica a cozinha
       await carregarEstadoCozinha();
 
       final pedidosRef = db.collection('pedidos');
@@ -146,7 +163,6 @@ class _PaginaLeitorMesaState extends State<PaginaLeitorMesa> {
         bool possuiItensCozinha = false;
 
         for (var item in widget.order.items) {
-          // Busca o produto no Firestore pelo nome
           final query = await produtosRef.where('nome', isEqualTo: item.name).limit(1).get();
           if (query.docs.isNotEmpty) {
             final tipo = query.docs.first.data()['tipo'] ?? '';
@@ -158,24 +174,14 @@ class _PaginaLeitorMesaState extends State<PaginaLeitorMesa> {
         }
 
         if (possuiItensCozinha) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                  '❌ A cozinha está encerrada. Remova os itens de cozinha para enviar o pedido.',
-                ),
-                backgroundColor: Colors.redAccent,
-              ),
-            );
-          }
+          _mostrarErro('❌ A cozinha está encerrada. Remova os itens de cozinha para enviar o pedido.');
           setState(() => enviando = false);
           return;
         }
       }
 
-      // ✅ Envia os pedidos normalmente
+      // ✅ Envia os pedidos
       for (var item in widget.order.items) {
-        // Busca o tipo do produto para definir o status corretamente
         final query = await produtosRef.where('nome', isEqualTo: item.name).limit(1).get();
         String tipo = 'garcom';
         if (query.docs.isNotEmpty) {
@@ -189,7 +195,7 @@ class _PaginaLeitorMesaState extends State<PaginaLeitorMesa> {
             'nomeProduto': item.name,
             'mesa': numeroMesa,
             'descricao': item.description ?? '',
-            'status': status, // 1 = garçom, 2 = cozinha
+            'status': status,
             'startTime': FieldValue.serverTimestamp(),
           });
         }
@@ -205,16 +211,22 @@ class _PaginaLeitorMesaState extends State<PaginaLeitorMesa> {
         );
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao enviar pedidos: $e')),
-        );
-      }
+      _mostrarErro('Erro ao enviar pedidos: $e');
     } finally {
       if (mounted) setState(() => enviando = false);
     }
   }
 
+  // =======================================================
+  // UTILITÁRIOS
+  // =======================================================
+  void _mostrarErro(String mensagem) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(mensagem), backgroundColor: Colors.redAccent),
+      );
+    }
+  }
 
   Future<void> _mostrarPopupSucesso(BuildContext context) async {
     return showDialog(
@@ -233,6 +245,9 @@ class _PaginaLeitorMesaState extends State<PaginaLeitorMesa> {
     );
   }
 
+  // =======================================================
+  // LEITOR DE QR CODE
+  // =======================================================
   void _onDetect(BarcodeCapture capture) async {
     if (leituraConcluida || enviando) return;
 
@@ -245,9 +260,7 @@ class _PaginaLeitorMesaState extends State<PaginaLeitorMesa> {
       final numeroMesa = int.tryParse(code.replaceAll(RegExp(r'[^0-9]'), ''));
 
       if (numeroMesa == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('QR Code inválido.')),
-        );
+        _mostrarErro('QR Code inválido.');
         setState(() => leituraConcluida = false);
         return;
       }
@@ -258,6 +271,9 @@ class _PaginaLeitorMesaState extends State<PaginaLeitorMesa> {
     }
   }
 
+  // =======================================================
+  // INTERFACE
+  // =======================================================
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -269,9 +285,7 @@ class _PaginaLeitorMesaState extends State<PaginaLeitorMesa> {
       ),
       body: Stack(
         children: [
-          MobileScanner(
-            onDetect: _onDetect,
-          ),
+          MobileScanner(onDetect: _onDetect),
           Center(
             child: Container(
               width: 250,
@@ -299,7 +313,9 @@ class _PaginaLeitorMesaState extends State<PaginaLeitorMesa> {
               style: TextStyle(color: Colors.white, fontSize: 16),
             ),
           ),
-          if (!cozinhaAberta)
+
+          // ⚠️ AVISO VISUAL QUANDO FECHADO
+          if (!restauranteAberto)
             Positioned(
               top: 0,
               left: 0,
@@ -308,10 +324,28 @@ class _PaginaLeitorMesaState extends State<PaginaLeitorMesa> {
                 color: Colors.red.shade50,
                 padding: const EdgeInsets.all(12),
                 child: const Text(
-                  '🍳 A cozinha está encerrada. Apenas pedidos de garçom serão aceitos.',
+                  '🍽️ O restaurante está encerrado. Não é possível enviar pedidos no momento.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: Colors.redAccent,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            )
+          else if (!cozinhaAberta)
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                color: Colors.orange.shade50,
+                padding: const EdgeInsets.all(12),
+                child: const Text(
+                  '🍳 A cozinha está encerrada. Apenas pedidos de garçom serão aceitos.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.orangeAccent,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
