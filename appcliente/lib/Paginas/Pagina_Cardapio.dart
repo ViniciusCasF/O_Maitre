@@ -191,7 +191,10 @@ class _PaginaCardapioState extends State<PaginaCardapio> {
           (produto['tags'] != null && produto['tags'].contains(filtroAtivo));
 
       final matchesBusca = searchText.isEmpty ||
-          produto['nome'].toLowerCase().contains(searchText.toLowerCase());
+          (produto['nome'] ?? '')
+              .toString()
+              .toLowerCase()
+              .contains(searchText.toLowerCase());
 
       return matchesCategoria && matchesBusca;
     }).toList();
@@ -204,6 +207,26 @@ class _PaginaCardapioState extends State<PaginaCardapio> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // =======================================
+            // 🏷️ TAGS (logo abaixo da barra de pesquisa)
+            // =======================================
+            if (filtros.isNotEmpty)
+              SizedBox(
+                height: 56,
+                child: ListView.separated(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  scrollDirection: Axis.horizontal,
+                  itemCount: filtros.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemBuilder: (context, index) {
+                    final texto = filtros[index];
+                    return _buildFiltro(texto);
+                  },
+                ),
+              )
+            else
+              const SizedBox(height: 8),
+
             // =======================================
             // ⚠️ Mensagem se restaurante estiver fechado
             // =======================================
@@ -344,13 +367,17 @@ class _PaginaCardapioState extends State<PaginaCardapio> {
           borderRadius: BorderRadius.circular(12),
         ),
         elevation: ativo ? 4 : 0,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       ),
       onPressed: () {
         setState(() {
           filtroAtivo = ativo ? '' : texto;
         });
       },
-      child: Text(texto),
+      child: Text(
+        texto,
+        style: const TextStyle(fontWeight: FontWeight.w600),
+      ),
     );
   }
 }

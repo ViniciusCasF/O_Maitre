@@ -3,10 +3,10 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../Modelos/order_manager.dart';
 import 'Pagina_Cardapio.dart';
+import '../Modelos/ContaManager.dart';
 
 class PaginaLeitorMesa extends StatefulWidget {
   final OrderManager order;
-
   const PaginaLeitorMesa({Key? key, required this.order}) : super(key: key);
 
   @override
@@ -15,10 +15,12 @@ class PaginaLeitorMesa extends StatefulWidget {
 
 class _PaginaLeitorMesaState extends State<PaginaLeitorMesa> {
   final FirebaseFirestore db = FirebaseFirestore.instance;
+  final contaManager = ContaManager();
+
   bool enviando = false;
   bool leituraConcluida = false;
   bool cozinhaAberta = true;
-  bool restauranteAberto = true; // ✅ NOVO: estado do restaurante
+  bool restauranteAberto = true;
 
   @override
   void initState() {
@@ -26,26 +28,18 @@ class _PaginaLeitorMesaState extends State<PaginaLeitorMesa> {
     carregarEstados();
   }
 
-  // =======================================================
-  // ✅ CARREGAR ESTADOS DE COZINHA E RESTAURANTE
-  // =======================================================
   Future<void> carregarEstados() async {
-    await Future.wait([
-      carregarEstadoCozinha(),
-      carregarEstadoRestaurante(),
-    ]);
+    await Future.wait([carregarEstadoCozinha(), carregarEstadoRestaurante()]);
   }
 
   Future<void> carregarEstadoCozinha() async {
     try {
       final doc = await db.collection('estados').doc('cozinha').get();
       if (doc.exists && doc.data()?['aberta'] != null) {
-        setState(() {
-          cozinhaAberta = doc['aberta'] == true;
-        });
+        setState(() => cozinhaAberta = doc['aberta'] == true);
       }
     } catch (e) {
-      print('Erro ao carregar estado da cozinha: $e');
+      debugPrint('Erro estado cozinha: $e');
     }
   }
 
@@ -53,227 +47,192 @@ class _PaginaLeitorMesaState extends State<PaginaLeitorMesa> {
     try {
       final doc = await db.collection('estados').doc('restaurante').get();
       if (doc.exists && doc.data()?['aberto'] != null) {
-        setState(() {
-          restauranteAberto = doc['aberto'] == true;
-        });
+        setState(() => restauranteAberto = doc['aberto'] == true);
       }
     } catch (e) {
-      print('Erro ao carregar estado do restaurante: $e');
+      debugPrint('Erro estado restaurante: $e');
     }
   }
 
-  // =======================================================
-  // VERIFICA E ATUALIZA ESTOQUE
-  // =======================================================
   Future<bool> verificarEAtualizarEstoque() async {
     final produtosRef = db.collection('produtos');
     final insumosRef = db.collection('insumos');
-    Map<String, double> consumoTotal = {};
+    final Map<String, double> consumoTotal = {};
 
     for (var item in widget.order.items) {
-      final query = await produtosRef.where('nome', isEqualTo: item.name).limit(1).get();
-      if (query.docs.isEmpty) continue;
+      final q = await produtosRef.where('nome', isEqualTo: item.name).limit(1).get();
+      if (q.docs.isEmpty) continue;
 
-      final produtoData = query.docs.first.data();
-      final List<dynamic>? insumos = produtoData['insumos'] as List<dynamic>?;
+      final data = q.docs.first.data();
+      final List<dynamic>? insumos = data['insumos'] as List<dynamic>?;
 
       if (insumos != null) {
         for (var insumoMap in insumos) {
           final nomeInsumo = insumoMap['nome']?.toString();
           final qtdStr = insumoMap['quantidade']?.toString() ?? '0';
-          final qtdNecessariaPorItem = double.tryParse(qtdStr.replaceAll(',', '.')) ?? 0.0;
-
+          final qtdUnit = double.tryParse(qtdStr.replaceAll(',', '.')) ?? 0.0;
           if (nomeInsumo == null || nomeInsumo.isEmpty) continue;
 
-          final qtdTotalNecessaria = qtdNecessariaPorItem * item.qty;
-          consumoTotal[nomeInsumo] = (consumoTotal[nomeInsumo] ?? 0) + qtdTotalNecessaria;
+          final total = qtdUnit * item.qty;
+          consumoTotal[nomeInsumo] = (consumoTotal[nomeInsumo] ?? 0) + total;
         }
       }
     }
 
-    // Verifica se há estoque suficiente
-    for (var entry in consumoTotal.entries) {
-      final nomeInsumo = entry.key;
-      final qtdNecessaria = entry.value;
+    // checa disponibilidade
+    for (var e in consumoTotal.entries) {
+      final nomeInsumo = e.key;
+      final qtdNec = e.value;
 
-      final insumoQuery = await insumosRef.where('nome', isEqualTo: nomeInsumo).limit(1).get();
-      if (insumoQuery.docs.isEmpty) {
-        _mostrarErro('❌ Pedido cancelado! O insumo "$nomeInsumo" não foi encontrado no estoque.');
+      final q = await insumosRef.where('nome', isEqualTo: nomeInsumo).limit(1).get();
+      if (q.docs.isEmpty) {
+        _erro('❌ Insumo "$nomeInsumo" não encontrado.');
         return false;
       }
-
-      final insumoData = insumoQuery.docs.first.data();
-      final qtdAtual = (insumoData['quantidade'] ?? 0).toDouble();
-
-      if (qtdAtual < qtdNecessaria) {
-        _mostrarErro(
-            '❌ Pedido cancelado! O insumo "$nomeInsumo" está em falta (necessário ${qtdNecessaria.toStringAsFixed(2)}, disponível ${qtdAtual.toStringAsFixed(2)}).');
+      final data = q.docs.first.data();
+      final qtdAtual = (data['quantidade'] ?? 0).toDouble();
+      if (qtdAtual < qtdNec) {
+        _erro('❌ Insumo "$nomeInsumo" em falta (precisa ${qtdNec.toStringAsFixed(2)}, tem ${qtdAtual.toStringAsFixed(2)}).');
         return false;
       }
     }
 
-    // Atualiza o estoque (consome os insumos)
-    for (var entry in consumoTotal.entries) {
-      final nomeInsumo = entry.key;
-      final qtdConsumir = entry.value;
-
-      final insumoQuery = await insumosRef.where('nome', isEqualTo: nomeInsumo).limit(1).get();
-      if (insumoQuery.docs.isNotEmpty) {
-        final doc = insumoQuery.docs.first;
-        final qtdAtual = (doc['quantidade'] ?? 0).toDouble();
-        final novaQtd = qtdAtual - qtdConsumir;
-
-        await insumosRef.doc(doc.id).update({'quantidade': novaQtd});
+    // consome estoque
+    for (var e in consumoTotal.entries) {
+      final nome = e.key;
+      final qtd = e.value;
+      final q = await insumosRef.where('nome', isEqualTo: nome).limit(1).get();
+      if (q.docs.isNotEmpty) {
+        final doc = q.docs.first;
+        final atual = (doc['quantidade'] ?? 0).toDouble();
+        await insumosRef.doc(doc.id).update({'quantidade': atual - qtd});
       }
     }
-
     return true;
   }
 
-  // =======================================================
-  // ENVIO DO PEDIDO
-  // =======================================================
   Future<void> _enviarPedidos(int numeroMesa) async {
     setState(() => enviando = true);
 
     try {
-      // ✅ Verifica o estado do restaurante antes de qualquer coisa
       await carregarEstadoRestaurante();
       if (!restauranteAberto) {
-        _mostrarErro('❌ O restaurante está encerrado. Não é possível enviar pedidos no momento.');
+        _erro('❌ O restaurante está encerrado.');
         setState(() => enviando = false);
         return;
       }
 
-      // ✅ Verifica e atualiza estoque
       final estoqueOk = await verificarEAtualizarEstoque();
       if (!estoqueOk) {
         setState(() => enviando = false);
         return;
       }
 
-      // ✅ Verifica a cozinha
       await carregarEstadoCozinha();
 
       final pedidosRef = db.collection('pedidos');
       final produtosRef = db.collection('produtos');
 
-      // 🔍 Verifica se há itens de cozinha quando a cozinha está fechada
-      if (!cozinhaAberta) {
-        bool possuiItensCozinha = false;
+      // abre/garante conta
+      await contaManager.abrirOuCriarConta(numeroMesa);
 
-        for (var item in widget.order.items) {
-          final query = await produtosRef.where('nome', isEqualTo: item.name).limit(1).get();
-          if (query.docs.isNotEmpty) {
-            final tipo = query.docs.first.data()['tipo'] ?? '';
+      // se cozinha fechada, bloqueia itens de cozinha
+      if (!cozinhaAberta) {
+        for (var it in widget.order.items) {
+          final q = await produtosRef.where('nome', isEqualTo: it.name).limit(1).get();
+          if (q.docs.isNotEmpty) {
+            final tipo = q.docs.first.data()['tipo'] ?? 'garcom';
             if (tipo == 'cozinha') {
-              possuiItensCozinha = true;
-              break;
+              _erro('❌ A cozinha está encerrada. Remova itens de cozinha.');
+              setState(() => enviando = false);
+              return;
             }
           }
         }
-
-        if (possuiItensCozinha) {
-          _mostrarErro('❌ A cozinha está encerrada. Remova os itens de cozinha para enviar o pedido.');
-          setState(() => enviando = false);
-          return;
-        }
       }
 
-      // ✅ Envia os pedidos
-      for (var item in widget.order.items) {
-        final query = await produtosRef.where('nome', isEqualTo: item.name).limit(1).get();
+      // envia pedidos
+      for (var it in widget.order.items) {
+        final q = await produtosRef.where('nome', isEqualTo: it.name).limit(1).get();
         String tipo = 'garcom';
-        if (query.docs.isNotEmpty) {
-          tipo = query.docs.first.data()['tipo'] ?? 'garcom';
+        double preco = 0.0;
+
+        if (q.docs.isNotEmpty) {
+          final data = q.docs.first.data();
+          tipo = data['tipo'] ?? 'garcom';
+          final dynamic p = data['preco'];
+          preco = p is int ? p.toDouble() : (p is double ? p : 0.0);
         }
 
         final status = (tipo == 'garcom') ? 1 : 2;
 
-        for (int i = 0; i < item.qty; i++) {
-          await pedidosRef.add({
-            'nomeProduto': item.name,
+        for (int i = 0; i < it.qty; i++) {
+          final doc = await pedidosRef.add({
+            'nomeProduto': it.name,
             'mesa': numeroMesa,
-            'descricao': item.description ?? '',
+            'descricao': it.description ?? '',
+            'preco': preco, // ✅ gravando o preço no pedido
             'status': status,
             'startTime': FieldValue.serverTimestamp(),
           });
+
+          // vincula à conta e soma preço
+          await contaManager.adicionarPedido(numeroMesa, doc.id, preco);
         }
       }
 
       widget.order.clear();
 
       if (mounted) {
-        await _mostrarPopupSucesso(context);
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const PaginaCardapio()),
-              (r) => false,
-        );
+        await _ok(context);
+        Navigator.of(context).popUntil((route) => route.isFirst);
+
       }
     } catch (e) {
-      _mostrarErro('Erro ao enviar pedidos: $e');
+      _erro('Erro ao enviar pedidos: $e');
     } finally {
       if (mounted) setState(() => enviando = false);
     }
   }
 
-  // =======================================================
-  // UTILITÁRIOS
-  // =======================================================
-  void _mostrarErro(String mensagem) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(mensagem), backgroundColor: Colors.redAccent),
-      );
-    }
-  }
-
-  Future<void> _mostrarPopupSucesso(BuildContext context) async {
-    return showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('✅ Pedido enviado!'),
-        content: const Text('Seu pedido foi enviado com sucesso!'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // =======================================================
-  // LEITOR DE QR CODE
-  // =======================================================
   void _onDetect(BarcodeCapture capture) async {
     if (leituraConcluida || enviando) return;
-
     final code = capture.barcodes.first.rawValue;
     if (code == null) return;
 
     setState(() => leituraConcluida = true);
-
     try {
       final numeroMesa = int.tryParse(code.replaceAll(RegExp(r'[^0-9]'), ''));
-
       if (numeroMesa == null) {
-        _mostrarErro('QR Code inválido.');
+        _erro('QR Code inválido.');
         setState(() => leituraConcluida = false);
         return;
       }
-
       await _enviarPedidos(numeroMesa);
-    } catch (e) {
+    } catch (_) {
       setState(() => leituraConcluida = false);
     }
   }
 
-  // =======================================================
-  // INTERFACE
-  // =======================================================
+  void _erro(String m) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(m), backgroundColor: Colors.redAccent),
+    );
+  }
+
+  Future<void> _ok(BuildContext ctx) {
+    return showDialog(
+      context: ctx,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        title: const Text('✅ Pedido enviado!'),
+        content: const Text('Seu pedido foi enviado com sucesso.'),
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -288,8 +247,7 @@ class _PaginaLeitorMesaState extends State<PaginaLeitorMesa> {
           MobileScanner(onDetect: _onDetect),
           Center(
             child: Container(
-              width: 250,
-              height: 250,
+              width: 250, height: 250,
               decoration: BoxDecoration(
                 border: Border.all(color: Colors.white, width: 3),
                 borderRadius: BorderRadius.circular(16),
@@ -299,60 +257,32 @@ class _PaginaLeitorMesaState extends State<PaginaLeitorMesa> {
           if (enviando)
             Container(
               color: Colors.black.withOpacity(0.6),
-              child: const Center(
-                child: CircularProgressIndicator(color: Colors.white),
-              ),
+              child: const Center(child: CircularProgressIndicator(color: Colors.white)),
             ),
           Positioned(
-            bottom: 80,
-            left: 0,
-            right: 0,
+            bottom: 80, left: 0, right: 0,
             child: const Text(
               'Aponte a câmera para o QR Code da mesa',
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.white, fontSize: 16),
             ),
           ),
-
-          // ⚠️ AVISO VISUAL QUANDO FECHADO
           if (!restauranteAberto)
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: Container(
-                color: Colors.red.shade50,
-                padding: const EdgeInsets.all(12),
-                child: const Text(
-                  '🍽️ O restaurante está encerrado. Não é possível enviar pedidos no momento.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.redAccent,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            )
-          else if (!cozinhaAberta)
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: Container(
-                color: Colors.orange.shade50,
-                padding: const EdgeInsets.all(12),
-                child: const Text(
-                  '🍳 A cozinha está encerrada. Apenas pedidos de garçom serão aceitos.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.orangeAccent,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
+            _banner('🍽️ O restaurante está encerrado.'),
+          if (restauranteAberto && !cozinhaAberta)
+            _banner('🍳 A cozinha está encerrada. Apenas itens de garçom.'),
         ],
       ),
     );
   }
+
+  Widget _banner(String text) => Positioned(
+    top: 0, left: 0, right: 0,
+    child: Container(
+      color: Colors.orange.shade50,
+      padding: const EdgeInsets.all(12),
+      child: Text(text, textAlign: TextAlign.center,
+          style: const TextStyle(color: Colors.orangeAccent, fontWeight: FontWeight.w600)),
+    ),
+  );
 }
