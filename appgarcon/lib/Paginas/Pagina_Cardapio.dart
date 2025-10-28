@@ -20,7 +20,9 @@ class _PaginaCardapioState extends State<PaginaCardapio> {
 
   List<Map<String, dynamic>> produtos = [];
   List<String> filtros = [];
-  bool cozinhaAberta = true; // valor padrão
+
+  bool cozinhaAberta = true;
+  bool restauranteAberto = true; // ✅ NOVO
 
   @override
   void initState() {
@@ -31,11 +33,15 @@ class _PaginaCardapioState extends State<PaginaCardapio> {
   Future<void> carregarTudo() async {
     await Future.wait([
       carregarEstadoCozinha(),
+      carregarEstadoRestaurante(), // ✅ NOVO
       carregarTags(),
     ]);
     await carregarProdutos();
   }
 
+  // ==============================
+  // ESTADO DA COZINHA
+  // ==============================
   Future<void> carregarEstadoCozinha() async {
     try {
       final doc = await FirebaseFirestore.instance
@@ -51,12 +57,44 @@ class _PaginaCardapioState extends State<PaginaCardapio> {
     }
   }
 
+  // ==============================
+  // ✅ NOVO: ESTADO DO RESTAURANTE
+  // ==============================
+  Future<void> carregarEstadoRestaurante() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('estados')
+          .doc('restaurante')
+          .get();
+
+      if (doc.exists && doc.data()?['aberto'] != null) {
+        restauranteAberto = doc['aberto'] == true;
+      }
+    } catch (e) {
+      print('Erro ao carregar estado do restaurante: $e');
+    }
+  }
+
+  // ==============================
+  // PRODUTOS
+  // ==============================
   Future<void> carregarProdutos() async {
     try {
-      final querySnapshot =
-      await FirebaseFirestore.instance.collection('produtos').get();
+      // ✅ Se o restaurante estiver fechado, não carrega produtos
+      if (!restauranteAberto) {
+        setState(() {
+          produtos = [];
+        });
+        return;
+      }
 
-      final novosProdutos = querySnapshot.docs.map((doc) {
+      final firestore = FirebaseFirestore.instance;
+      final produtosSnapshot = await firestore.collection('produtos').get();
+      final insumosRef = firestore.collection('insumos');
+
+      List<Map<String, dynamic>> produtosDisponiveis = [];
+
+      for (var doc in produtosSnapshot.docs) {
         final data = doc.data();
 
         List<String> tags = [];
@@ -64,24 +102,58 @@ class _PaginaCardapioState extends State<PaginaCardapio> {
           tags = List<String>.from(data['tags']);
         }
 
-        return {
-          'nome': data['nome'] ?? 'Sem nome',
-          'descricao': data['descricao'] ?? '',
-          'imagem': data['imagemUrl'] ?? '',
-          'tags': tags,
-          'tipo': data['tipo'] ?? 'garcom',
-          'preco': data['preco'] ?? 0,
-        };
-      }).where((produto) {
-        // se a cozinha estiver fechada, mostrar só os produtos do garçom
-        if (!cozinhaAberta) {
-          return produto['tipo'] == 'garcom';
+        // Verifica insumos do produto
+        final List<dynamic>? insumos = data['insumos'] as List<dynamic>?;
+        bool possuiEstoqueSuficiente = true;
+
+        if (insumos != null && insumos.isNotEmpty) {
+          for (var insumoMap in insumos) {
+            final nomeInsumo = insumoMap['nome']?.toString() ?? '';
+            final qtdStr = insumoMap['quantidade']?.toString() ?? '0';
+            final qtdNecessaria =
+                double.tryParse(qtdStr.replaceAll(',', '.')) ?? 0.0;
+
+            if (nomeInsumo.isEmpty) continue;
+
+            final query = await insumosRef
+                .where('nome', isEqualTo: nomeInsumo)
+                .limit(1)
+                .get();
+
+            if (query.docs.isEmpty) {
+              possuiEstoqueSuficiente = false;
+              break;
+            }
+
+            final insumoData = query.docs.first.data();
+            final qtdAtual = (insumoData['quantidade'] ?? 0).toDouble();
+
+            if (qtdAtual < qtdNecessaria) {
+              possuiEstoqueSuficiente = false;
+              break;
+            }
+          }
         }
-        return true;
-      }).toList();
+
+        if (possuiEstoqueSuficiente) {
+          // Se a cozinha estiver fechada, só mostra produtos do garçom
+          if (!cozinhaAberta && (data['tipo'] ?? 'garcom') != 'garcom') {
+            continue;
+          }
+
+          produtosDisponiveis.add({
+            'nome': data['nome'] ?? 'Sem nome',
+            'descricao': data['descricao'] ?? '',
+            'imagem': data['imagemUrl'] ?? '',
+            'tags': tags,
+            'tipo': data['tipo'] ?? 'garcom',
+            'preco': data['preco'] ?? 0,
+          });
+        }
+      }
 
       setState(() {
-        produtos = novosProdutos;
+        produtos = produtosDisponiveis;
       });
     } catch (e) {
       print('Erro ao carregar produtos: $e');
@@ -119,7 +191,10 @@ class _PaginaCardapioState extends State<PaginaCardapio> {
           (produto['tags'] != null && produto['tags'].contains(filtroAtivo));
 
       final matchesBusca = searchText.isEmpty ||
-          produto['nome'].toLowerCase().contains(searchText.toLowerCase());
+          (produto['nome'] ?? '')
+              .toString()
+              .toLowerCase()
+              .contains(searchText.toLowerCase());
 
       return matchesCategoria && matchesBusca;
     }).toList();
@@ -132,84 +207,121 @@ class _PaginaCardapioState extends State<PaginaCardapio> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (!cozinhaAberta)
+            // =======================================
+            // 🏷️ TAGS (logo abaixo da barra de pesquisa)
+            // =======================================
+            if (filtros.isNotEmpty)
+              SizedBox(
+                height: 56,
+                child: ListView.separated(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  scrollDirection: Axis.horizontal,
+                  itemCount: filtros.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemBuilder: (context, index) {
+                    final texto = filtros[index];
+                    return _buildFiltro(texto);
+                  },
+                ),
+              )
+            else
+              const SizedBox(height: 8),
+
+            // =======================================
+            // ⚠️ Mensagem se restaurante estiver fechado
+            // =======================================
+            if (!restauranteAberto)
               Container(
                 color: Colors.red.shade50,
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
                 child: const Text(
+                  '🍽️ O restaurante está encerrando. Por favor, pague a sua conta e volte outro dia :).',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      color: Colors.redAccent, fontWeight: FontWeight.w600),
+                ),
+              ),
+
+            // Mensagem da cozinha (se restaurante aberto)
+            if (restauranteAberto && !cozinhaAberta)
+              Container(
+                color: Colors.orange.shade50,
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                child: const Text(
                   '🍳 A cozinha está encerrada. Apenas produtos do garçom estão disponíveis.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w600),
+                  style: TextStyle(
+                      color: Colors.orangeAccent, fontWeight: FontWeight.w600),
                 ),
               ),
-            // Filtros (tags)
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  const SizedBox(width: 16),
-                  for (var f in filtros) ...[
-                    _buildFiltro(f),
-                    const SizedBox(width: 8),
-                  ],
-                  const SizedBox(width: 16),
-                ],
-              ),
-            ),
-            // Lista de produtos
-            Expanded(
-              child: produtosFiltrados.isEmpty
-                  ? const Center(child: Text('Nenhum produto encontrado'))
-                  : GridView.builder(
-                padding: const EdgeInsets.all(16),
-                gridDelegate:
-                const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  crossAxisSpacing: 16,
-                  mainAxisSpacing: 16,
-                  childAspectRatio: 0.7,
-                ),
-                itemCount: produtosFiltrados.length,
-                itemBuilder: (context, index) {
-                  final produto = produtosFiltrados[index];
-                  return GestureDetector(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => PaginaProduto(
-                            nome: produto['nome'],
-                            preco: produto['preco'],
-                            imagem: produto['imagem'],
-                            descricao: produto['descricao'],
+
+            // Lista de produtos (apenas se restaurante aberto)
+            if (restauranteAberto)
+              Expanded(
+                child: produtosFiltrados.isEmpty
+                    ? const Center(child: Text('Nenhum produto encontrado'))
+                    : GridView.builder(
+                  padding: const EdgeInsets.all(16),
+                  gridDelegate:
+                  const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 16,
+                    mainAxisSpacing: 16,
+                    childAspectRatio: 0.7,
+                  ),
+                  itemCount: produtosFiltrados.length,
+                  itemBuilder: (context, index) {
+                    final produto = produtosFiltrados[index];
+                    return GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => PaginaProduto(
+                              nome: produto['nome'],
+                              preco: produto['preco'],
+                              imagem: produto['imagem'],
+                              descricao: produto['descricao'],
+                            ),
                           ),
-                        ),
-                      ).then((_) {
-                        setState(() {});
-                      });
-                    },
-                    child: ProdutoCard(
-                      nome: produto['nome'],
-                      preco: produto['preco'],
-                      imagem: produto['imagem'],
-                    ),
-                  );
-                },
+                        ).then((_) {
+                          setState(() {});
+                        });
+                      },
+                      child: ProdutoCard(
+                        nome: produto['nome'],
+                        preco: produto['preco'],
+                        imagem: produto['imagem'],
+                      ),
+                    );
+                  },
+                ),
+              )
+            else
+              const Expanded(
+                child: Center(
+                  child: Text(
+                    "O cardápio está indisponível no momento.",
+                    style: TextStyle(
+                        fontSize: 16, color: Colors.grey, fontWeight: FontWeight.w500),
+                  ),
+                ),
               ),
-            ),
           ],
         ),
       ),
 
-      // Barra de pedidos
+      // Barra inferior (pedido aberto)
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           if (order.items.isNotEmpty)
             Container(
               color: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              padding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               child: Row(
                 children: [
                   Expanded(
@@ -223,7 +335,8 @@ class _PaginaCardapioState extends State<PaginaCardapio> {
                     onPressed: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => const PaginaPedidos()),
+                        MaterialPageRoute(
+                            builder: (_) => const PaginaPedidos()),
                       ).then((_) {
                         setState(() {});
                       });
@@ -254,13 +367,17 @@ class _PaginaCardapioState extends State<PaginaCardapio> {
           borderRadius: BorderRadius.circular(12),
         ),
         elevation: ativo ? 4 : 0,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       ),
       onPressed: () {
         setState(() {
           filtroAtivo = ativo ? '' : texto;
         });
       },
-      child: Text(texto),
+      child: Text(
+        texto,
+        style: const TextStyle(fontWeight: FontWeight.w600),
+      ),
     );
   }
 }
