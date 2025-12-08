@@ -5,6 +5,7 @@ import '../Widget/Barra_pesquisa.dart';
 import '../Widget/ProdutoCard.dart';
 import 'Pagina_Pedidos.dart';
 import '../Modelos/order_manager.dart';
+import '../Modelos/MesaHelper.dart';
 
 class PaginaCardapio extends StatefulWidget {
   const PaginaCardapio({super.key});
@@ -27,8 +28,49 @@ class _PaginaCardapioState extends State<PaginaCardapio> {
   @override
   void initState() {
     super.initState();
-    carregarTudo();
+    carregarTudo().then((_) => verificarOuCriarConta());
   }
+
+  Future<void> verificarOuCriarConta() async {
+    final mesa = MesaHelper.detectarMesa();
+    final db = FirebaseFirestore.instance;
+    final docRef = db.collection("contas").doc("mesa_$mesa");
+    final snap = await docRef.get();
+
+    // 1. Conta não existe → criar nova
+    if (!snap.exists) {
+      await docRef.set({
+        "mesaNumero": mesa,
+        "pedidos": [],
+        "total": 0,
+        "status": "aberta",
+        "status_pagamento": "pendente",
+        "startTime": FieldValue.serverTimestamp(),
+        "lastActivity": FieldValue.serverTimestamp(),
+      });
+      return;
+    }
+
+    final data = snap.data()!;
+    final status = data["status"];
+
+    // 2. Se conta fechada → arquiva ANTES
+    if (status == "fechada") {
+      await arquivarContaSeFechada(mesa);
+
+      // 3. Depois cria uma nova conta limpa
+      await docRef.set({
+        "mesaNumero": mesa,
+        "pedidos": [],
+        "total": 0,
+        "status": "aberta",
+        "status_pagamento": "pendente",
+        "startTime": FieldValue.serverTimestamp(),
+        "lastActivity": FieldValue.serverTimestamp(),
+      });
+    }
+  }
+
 
   Future<void> carregarTudo() async {
     await Future.wait([
@@ -38,6 +80,27 @@ class _PaginaCardapioState extends State<PaginaCardapio> {
     ]);
     await carregarProdutos();
   }
+
+  Future<void> arquivarContaSeFechada(int mesa) async {
+    final db = FirebaseFirestore.instance;
+    final docRef = db.collection("contas").doc("mesa_$mesa");
+    final snap = await docRef.get();
+
+    if (!snap.exists) return;
+
+    final dados = snap.data()!;
+    final status = dados["status"];
+
+    // Só arquiva se estiver fechada
+    if (status == "fechada") {
+      await db.collection("historico_contas").add({
+        ...dados,
+        "mesaNumero": mesa,
+        "timestamp_fechamento": FieldValue.serverTimestamp(),
+      });
+    }
+  }
+
 
   // ==============================
   // ESTADO DA COZINHA
