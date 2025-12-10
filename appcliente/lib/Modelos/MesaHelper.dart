@@ -9,6 +9,6 @@ class MesaHelper {
     } catch (e) {
       log('Erro lendo mesa da URL: $e');
     }
-    return 1;
+    return 1; // mesa padrão em caso de erro
   }
 }

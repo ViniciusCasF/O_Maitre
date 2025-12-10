@@ -6,8 +6,8 @@ import '../Modelos/Itens.dart';
 import '../Modelos/order_manager.dart';
 import '../Modelos/Pedidos.dart';
 import '../firebase_options.dart';
-import 'Pagina_Cardapio.dart';
-import 'PaginaLeitorMesa.dart';
+import '../Modelos/MesaHelper.dart';
+import '../Modelos/ContaManager.dart';
 
 class PaginaPedidos extends StatefulWidget {
   const PaginaPedidos({Key? key}) : super(key: key);
@@ -19,16 +19,13 @@ class PaginaPedidos extends StatefulWidget {
 class _PaginaPedidosState extends State<PaginaPedidos> {
   final OrderManager order = OrderManager();
   final FirebaseFirestore db = FirebaseFirestore.instance;
+  final contaManager = ContaManager();
   bool enviando = false;
 
   @override
   void initState() {
     super.initState();
-    _initFirebase();
-  }
-
-  Future<void> _initFirebase() async {
-    await Firebase.initializeApp(
+    Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
   }
@@ -37,25 +34,36 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
     setState(() => enviando = true);
 
     try {
+      // Agora mesa vem da URL automaticamente!
+      final numeroMesa = MesaHelper.detectarMesa();
       final pedidosRef = db.collection('pedidos');
-      const numeroMesa = 5; // 🔹 Pode vir do QR Code ou tela anterior
+
+      // Garante que a conta da mesa existe
+      await contaManager.abrirOuCriarConta(numeroMesa);
 
       for (var item in order.items) {
         for (int i = 0; i < item.qty; i++) {
-          await pedidosRef.add({
+          final doc = await pedidosRef.add({
             'nomeProduto': item.name,
             'mesa': numeroMesa,
             'descricao': item.description ?? '',
-            'status': 1, // 🔹 1 = pendente / em preparo
-            'startTime': FieldValue.serverTimestamp(), // 🔹 garante timestamp válido
+            'preco': item.price,
+            'status': 1,
+            'startTime': FieldValue.serverTimestamp(),
           });
+
+          await contaManager.adicionarPedido(
+            numeroMesa,
+            doc.id,
+            item.price,
+          );
         }
       }
 
       order.clear();
+      await _mostrarPopupSucesso(context);
 
       if (mounted) {
-        await _mostrarPopupSucesso(context);
         Navigator.of(context).popUntil((r) => r.isFirst);
       }
     } catch (e) {
@@ -68,7 +76,6 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
       if (mounted) setState(() => enviando = false);
     }
   }
-
 
   Future<void> _mostrarPopupSucesso(BuildContext context) async {
     return showDialog(
@@ -111,38 +118,12 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
                   itemBuilder: (_, i) {
                     final it = items[i];
                     return ListTile(
-                      leading: ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: it.image.isNotEmpty
-                            ? Image.network(
-                          it.image,
-                          width: 50,
-                          height: 50,
-                          fit: BoxFit.cover,
-                          errorBuilder:
-                              (context, error, stackTrace) =>
-                          const Icon(Icons.fastfood,
-                              size: 40,
-                              color: Colors.grey),
-                        )
-                            : const Icon(Icons.fastfood,
-                            size: 40, color: Colors.grey),
-                      ),
-                      title: Text(
-                        it.name,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Qtd: ${it.qty}'),
-                          if (it.description.isNotEmpty)
-                            Text(it.description),
-                        ],
-                      ),
+                      leading: Icon(Icons.fastfood, size: 40),
+                      title: Text(it.name,
+                          style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600)),
+                      subtitle: Text('Qtd: ${it.qty}'),
                       trailing: IconButton(
                         icon: const Icon(Icons.delete_outline),
                         onPressed: () =>
@@ -170,17 +151,8 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: ElevatedButton(
-                      onPressed: items.isEmpty || enviando
-                          ? null
-                          : () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                PaginaLeitorMesa(order: order),
-                          ),
-                        );
-                      },
+                      onPressed:
+                      items.isEmpty || enviando ? null : _enviarPedidos,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF448AFF),
                         padding:
@@ -195,7 +167,6 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
                 ],
               ),
             ),
-            SizedBox(height: MediaQuery.of(context).padding.bottom),
           ],
         ),
       ),
