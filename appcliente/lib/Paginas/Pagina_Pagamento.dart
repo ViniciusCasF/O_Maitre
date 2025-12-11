@@ -82,19 +82,62 @@ class _PaginaPagamentoState extends State<PaginaPagamento> {
     } catch (_) {}
   }
 
-  /// 🔵 Atualiza Firestore marcando a mesa como paga
+  /// 🔵 Arquiva a conta da mesa assim que o pagamento for aprovado
   Future<void> liberarMesaFirestore() async {
     final db = FirebaseFirestore.instance;
+    final contaRef = db.collection("contas").doc("mesa_${widget.numeroMesa}");
 
-    await db
-        .collection("contas")
-        .doc("mesa_${widget.numeroMesa}")
-        .update({
-      "status_pagamento": "aprovado",
-      "status": "fechada",
-      "lastActivity": FieldValue.serverTimestamp(),
+    final snap = await contaRef.get();
+    if (!snap.exists) {
+      print("❌ Conta não encontrada para arquivamento.");
+      return;
+    }
+
+    final data = snap.data()!;
+
+    final double totalVenda = (data["total"] ?? 0.0).toDouble();
+    final double custoTotal = (data["custoTotal"] ?? 0.0).toDouble();
+    final List<String> pedidos = List<String>.from(data["pedidos"] ?? []);
+
+    print("🔵 Arquivando conta:");
+    print(" - totalVenda = $totalVenda");
+    print(" - custoTotal = $custoTotal");
+    print(" - lucro = ${totalVenda - custoTotal}");
+    print(" - pedidos = $pedidos");
+
+    // 🔥 ARQUIVA NO historico_contas
+    await db.collection("historico_contas").add({
+      "mesaNumero": widget.numeroMesa,
+      "pedidos": pedidos,
+      "totalVenda": totalVenda,
+      "custoTotal": custoTotal,
+      "lucro": totalVenda - custoTotal,
+      "status": "paga",
+      "timestamp_fechamento": FieldValue.serverTimestamp(),
     });
+
+    // 🔥 MARCAR pedidos como arquivados
+    for (final id in pedidos) {
+      await db.collection("pedidos").doc(id).update({
+        "status": -1,
+        "archivedAt": FieldValue.serverTimestamp(),
+      });
+    }
+
+    // 🔥 RESETAR CONTA
+    await contaRef.set({
+      "mesaNumero": widget.numeroMesa,
+      "pedidos": [],
+      "total": 0.0,
+      "custoTotal": 0.0,
+      "status": "fechada",
+      "status_pagamento": "aprovado",
+      "resetAt": FieldValue.serverTimestamp(),
+    });
+
+    print("✅ Conta arquivada e resetada com sucesso!");
   }
+
 
 
   @override

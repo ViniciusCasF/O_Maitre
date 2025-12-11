@@ -56,7 +56,6 @@ class _PaginaCardapioState extends State<PaginaCardapio> {
 
     // 2. Se conta fechada → arquiva ANTES
     if (status == "fechada") {
-      await arquivarContaSeFechada(mesa);
 
       // 3. Depois cria uma nova conta limpa
       await docRef.set({
@@ -91,15 +90,23 @@ class _PaginaCardapioState extends State<PaginaCardapio> {
     final dados = snap.data()!;
     final status = dados["status"];
 
-    // Só arquiva se estiver fechada
+    // Apenas arquiva se estiver fechada
     if (status == "fechada") {
+
+      final double total = (dados["total"] ?? 0.0).toDouble();
+      final double custoTotal = (dados["custoTotal"] ?? 0.0).toDouble();
+
       await db.collection("historico_contas").add({
         ...dados,
         "mesaNumero": mesa,
+        "totalVenda": total,
+        "custoTotal": custoTotal,
+        "lucro": total - custoTotal,   // opcional
         "timestamp_fechamento": FieldValue.serverTimestamp(),
       });
     }
   }
+
 
 
   // ==============================
