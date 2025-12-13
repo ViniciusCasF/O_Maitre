@@ -11,14 +11,51 @@ class TelaDashboard extends StatefulWidget {
 class _TelaDashboardState extends State<TelaDashboard> {
   String _periodoSelecionado = "Dia";
 
-  final Map<String, Map<String, double>> _dados = {
-    "Dia": {"recebido": 1200, "insumos": 400},
-    "Semana": {"recebido": 8200, "insumos": 2500},
-    "Mês": {"recebido": 32000, "insumos": 11000},
-    "Ano": {"recebido": 380000, "insumos": 135000},
-  };
-
   final FirebaseFirestore _db = FirebaseFirestore.instance;
+
+  /// Converte qualquer numérico para double, evitando crash com int/null
+  double _toDouble(dynamic value) {
+    if (value == null) return 0;
+    if (value is num) return value.toDouble();
+    return 0;
+  }
+
+  /// Define o início do período baseado no filtro selecionado
+  DateTime _inicioPeriodo() {
+    final agora = DateTime.now();
+
+    switch (_periodoSelecionado) {
+      case "Dia":
+      // Início do dia atual
+        return DateTime(agora.year, agora.month, agora.day);
+      case "Semana":
+      // Últimos 7 dias
+        return agora.subtract(const Duration(days: 7));
+      case "Mês":
+      // Início do mês atual
+        return DateTime(agora.year, agora.month, 1);
+      case "Ano":
+      // Início do ano atual
+        return DateTime(agora.year, 1, 1);
+      default:
+        return DateTime(agora.year, agora.month, agora.day);
+    }
+  }
+
+  /// Stream de contas históricas filtradas por data e status = "paga"
+  Stream<QuerySnapshot> _streamHistorico() {
+    final inicio = _inicioPeriodo();
+
+    return _db
+        .collection('historico_contas')
+        .where(
+      'timestamp_fechamento',
+      isGreaterThanOrEqualTo: Timestamp.fromDate(inicio),
+    )
+        .snapshots();
+  }
+
+
 
   /// Atualiza o estado da cozinha
   Future<void> _atualizarEstadoCozinha(bool aberta) async {
@@ -40,17 +77,13 @@ class _TelaDashboardState extends State<TelaDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    final recebido = _dados[_periodoSelecionado]!["recebido"]!;
-    final insumos = _dados[_periodoSelecionado]!["insumos"]!;
-    final rendaBruta = recebido - insumos;
-
     return Scaffold(
       appBar: AppBar(title: const Text("Painel do Proprietário")),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
-            /// 🔥 STREAM BUILDER COM OS DOIS ESTADOS
+            /// 🔥 STREAM BUILDER COM OS DOIS ESTADOS (restaurante/cozinha)
             StreamBuilder<QuerySnapshot>(
               stream: _db.collection('estados').snapshots(),
               builder: (context, snapshot) {
@@ -61,7 +94,6 @@ class _TelaDashboardState extends State<TelaDashboard> {
                   return const CircularProgressIndicator();
                 }
 
-                // Pega os documentos
                 final docs = snapshot.data!.docs;
                 final cozinhaDoc = docs.where((d) => d.id == 'cozinha').isNotEmpty
                     ? docs.firstWhere((d) => d.id == 'cozinha')
@@ -73,7 +105,6 @@ class _TelaDashboardState extends State<TelaDashboard> {
 
                 final cozinhaData = cozinhaDoc?.data() as Map<String, dynamic>?;
                 final restauranteData = restauranteDoc?.data() as Map<String, dynamic>?;
-
 
                 final cozinhaAberta = cozinhaData?['aberta'] ?? false;
                 final restauranteAberto = restauranteData?['aberto'] ?? false;
@@ -134,7 +165,6 @@ class _TelaDashboardState extends State<TelaDashboard> {
                     ),
                   ],
                 );
-
               },
             ),
 
@@ -143,9 +173,10 @@ class _TelaDashboardState extends State<TelaDashboard> {
             // Filtro de período
             Column(
               children: [
-                const Text("Filtrar por:",
-                    style:
-                    TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+                const Text(
+                  "Filtrar por:",
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                ),
                 const SizedBox(height: 8),
                 DropdownButton<String>(
                   value: _periodoSelecionado,
@@ -164,36 +195,72 @@ class _TelaDashboardState extends State<TelaDashboard> {
 
             const SizedBox(height: 24),
 
-            // Cards de resumo
+            /// 🔢 STREAM DOS DADOS FINANCEIROS (historico_contas)
             Expanded(
-              child: GridView.count(
-                crossAxisCount:
-                MediaQuery.of(context).size.width > 600 ? 3 : 1,
-                crossAxisSpacing: 16,
-                mainAxisSpacing: 16,
-                children: [
-                  _buildCard(
-                    titulo: "Total Recebido",
-                    valor: "R\$ ${recebido.toStringAsFixed(2)}",
-                    cor1: Colors.green.shade400,
-                    cor2: Colors.green.shade700,
-                    icone: Icons.attach_money,
-                  ),
-                  _buildCard(
-                    titulo: "Gastos com Insumos",
-                    valor: "R\$ ${insumos.toStringAsFixed(2)}",
-                    cor1: Colors.red.shade400,
-                    cor2: Colors.red.shade700,
-                    icone: Icons.shopping_cart,
-                  ),
-                  _buildCard(
-                    titulo: "Renda Bruta",
-                    valor: "R\$ ${rendaBruta.toStringAsFixed(2)}",
-                    cor1: Colors.blue.shade400,
-                    cor2: Colors.blue.shade700,
-                    icone: Icons.bar_chart,
-                  ),
-                ],
+              child: StreamBuilder<QuerySnapshot>(
+                stream: _streamHistorico(),
+                builder: (context, snapshot) {
+                  if (snapshot.hasError) {
+                    return const Center(
+                      child: Text("Erro ao carregar dados financeiros"),
+                    );
+                  }
+                  if (!snapshot.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+
+                  final docs = snapshot.data!.docs;
+
+                  double totalRecebido = 0;
+                  double totalInsumos = 0;
+                  double totalLucro = 0;
+
+                  for (final doc in docs) {
+                    final data = doc.data() as Map<String, dynamic>?;
+
+                    if (data == null) continue; // evita erro
+
+
+                    totalRecebido += _toDouble(data['totalVenda']);
+                    totalInsumos += _toDouble(data['custoTotal']);
+                    totalLucro += _toDouble(data['lucro']);
+                  }
+
+                  // Se quiser, pode calcular rendaBruta = totalRecebido - totalInsumos
+                  // em vez de somar o campo 'lucro'
+                  // final rendaBruta = totalRecebido - totalInsumos;
+                  final rendaBruta = totalLucro;
+
+                  return GridView.count(
+                    crossAxisCount:
+                    MediaQuery.of(context).size.width > 600 ? 3 : 1,
+                    crossAxisSpacing: 16,
+                    mainAxisSpacing: 16,
+                    children: [
+                      _buildCard(
+                        titulo: "Total Recebido",
+                        valor: "R\$ ${totalRecebido.toStringAsFixed(2)}",
+                        cor1: Colors.green.shade400,
+                        cor2: Colors.green.shade700,
+                        icone: Icons.attach_money,
+                      ),
+                      _buildCard(
+                        titulo: "Gastos com Insumos",
+                        valor: "R\$ ${totalInsumos.toStringAsFixed(2)}",
+                        cor1: Colors.red.shade400,
+                        cor2: Colors.red.shade700,
+                        icone: Icons.shopping_cart,
+                      ),
+                      _buildCard(
+                        titulo: "Renda Bruta",
+                        valor: "R\$ ${rendaBruta.toStringAsFixed(2)}",
+                        cor1: Colors.blue.shade400,
+                        cor2: Colors.blue.shade700,
+                        icone: Icons.bar_chart,
+                      ),
+                    ],
+                  );
+                },
               ),
             ),
           ],

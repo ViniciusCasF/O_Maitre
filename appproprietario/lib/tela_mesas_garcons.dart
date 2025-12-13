@@ -100,6 +100,8 @@ class _TelaMesasGarconsState extends State<TelaMesasGarcons> {
   // Mostra o QR Code e botão de remover mesa
   // =============================================================
   void _mostrarQrCodeMesa(String mesaId, int numero) {
+    final link = "http://192.168.0.109:5050/?mesa=$numero";
+
     showDialog(
       context: context,
       builder: (_) => Dialog(
@@ -115,16 +117,28 @@ class _TelaMesasGarconsState extends State<TelaMesasGarcons> {
                 style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 16),
+
+              // 🔹 QR CODE COM LINK
               QrImageView(
-                data: numero.toString(),
+                data: link,
                 version: QrVersions.auto,
                 size: 200.0,
               ),
+
               const SizedBox(height: 10),
-              Text(
-                "Número da mesa: $numero",
-                style: const TextStyle(fontWeight: FontWeight.bold),
+              const Text(
+                "Link do pedido:",
+                style: TextStyle(fontWeight: FontWeight.bold),
               ),
+              const SizedBox(height: 4),
+
+              // 🔹 Mostra o link (opcional)
+              SelectableText(
+                link,
+                style: const TextStyle(fontSize: 12),
+                textAlign: TextAlign.center,
+              ),
+
               const SizedBox(height: 16),
               ElevatedButton.icon(
                 onPressed: () async {
@@ -165,6 +179,7 @@ class _TelaMesasGarconsState extends State<TelaMesasGarcons> {
       ),
     );
   }
+
 
   // =============================================================
   // Card visual do garçom
