@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:appgarcon/Paginas/Pagina_Cardapio.dart';
 import 'package:appgarcon/Paginas/Pagina_Conta.dart';
+import 'package:appgarcon/Paginas/Pagina_Leitor_Mesa_Garcom.dart';
 import 'package:water_drop_nav_bar/water_drop_nav_bar.dart';
 
 // Importa a nova página de pedidos
@@ -39,7 +40,7 @@ class _MyHomePageState extends State<MyHomePage> {
           controller: pageController,
           children: const <Widget>[
             PaginaCardapio(),
-            PaginaConta(),
+            PaginaLeitorMesaGarcom(),
             PaginaPedidosGarcom(), // <- nova página
           ],
         ),

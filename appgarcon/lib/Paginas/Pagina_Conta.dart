@@ -6,11 +6,17 @@ import '../Modelos/MesaHelper.dart';
 import 'Pagina_Pagamento.dart';
 
 class PaginaConta extends StatefulWidget {
-  const PaginaConta({Key? key}) : super(key: key);
+  final int numeroMesa;
+
+  const PaginaConta({
+    Key? key,
+    required this.numeroMesa,
+  }) : super(key: key);
 
   @override
   State<PaginaConta> createState() => _PaginaContaState();
 }
+
 
 class _PaginaContaState extends State<PaginaConta> {
   final FirebaseFirestore db = FirebaseFirestore.instance;
@@ -22,7 +28,7 @@ class _PaginaContaState extends State<PaginaConta> {
   @override
   void initState() {
     super.initState();
-    numeroMesa = MesaHelper.detectarMesa(); // usa ?mesa=, senão 1
+    numeroMesa = widget.numeroMesa;
     carregarPedidos();
   }
 
