@@ -197,22 +197,32 @@ class _PaginaLeitorMesaState extends State<PaginaLeitorMesa> {
 
   void _onDetect(BarcodeCapture capture) async {
     if (leituraConcluida || enviando) return;
+
     final code = capture.barcodes.first.rawValue;
     if (code == null) return;
 
     setState(() => leituraConcluida = true);
+
     try {
-      final numeroMesa = int.tryParse(code.replaceAll(RegExp(r'[^0-9]'), ''));
+      final uri = Uri.parse(code);
+
+      // ✅ LÊ SOMENTE ?mesa=
+      final mesaStr = uri.queryParameters['mesa'];
+      final numeroMesa = int.tryParse(mesaStr ?? '');
+
       if (numeroMesa == null) {
         _erro('QR Code inválido.');
         setState(() => leituraConcluida = false);
         return;
       }
+
       await _enviarPedidos(numeroMesa);
-    } catch (_) {
+    } catch (e) {
       setState(() => leituraConcluida = false);
+      _erro('QR Code inválido.');
     }
   }
+
 
   void _erro(String m) {
     if (!mounted) return;
