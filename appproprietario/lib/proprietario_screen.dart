@@ -4,6 +4,7 @@ import 'tela_principal.dart';
 import 'tela_mesas_garcons.dart';
 import 'tela_estoque.dart';
 import 'tela_produtos.dart'; // 🔹 nova importação
+import 'TelaContasAtivas.dart';
 
 class ProprietarioScreen extends StatefulWidget {
   const ProprietarioScreen({super.key});
@@ -20,6 +21,7 @@ class _ProprietarioScreenState extends State<ProprietarioScreen> {
     TelaMesasGarcons(),   // index 1
     TelaEstoque(),        // index 2
     TelaProdutos(),       // index 3 🔹 nova aba
+    TelaContasAtivas(),
   ];
 
   void _onSelectPage(int index) {

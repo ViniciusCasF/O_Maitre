@@ -214,26 +214,35 @@ class _TelaDashboardState extends State<TelaDashboard> {
                   double totalRecebido = 0;
                   double totalInsumos = 0;
                   double totalLucro = 0;
+                  double totalComissao = 0; // ← NOVO
 
                   for (final doc in docs) {
                     final data = doc.data() as Map<String, dynamic>?;
 
-                    if (data == null) continue; // evita erro
+                    if (data == null) continue;
+
+                    final double subtotal = _toDouble(data['subtotal']);
+                    final double custo = _toDouble(data['custoTotal']);
+                    final double lucro = _toDouble(data['lucro']);
+                    final bool taxaAtiva = data['taxaDeServico'] ?? false;
+                    final double valorTaxa = _toDouble(
+                        data['valorTaxaServico'] ?? data['valorTaxa'] ?? 0.0
+                    );
 
 
-                    totalRecebido += _toDouble(data['totalVenda']);
-                    totalInsumos += _toDouble(data['custoTotal']);
-                    totalLucro += _toDouble(data['lucro']);
+                    totalRecebido += subtotal;
+                    totalInsumos += custo;
+                    totalLucro += lucro;
+
+                    if (taxaAtiva) {
+                      totalComissao += valorTaxa;
+                    }
                   }
 
-                  // Se quiser, pode calcular rendaBruta = totalRecebido - totalInsumos
-                  // em vez de somar o campo 'lucro'
-                  // final rendaBruta = totalRecebido - totalInsumos;
                   final rendaBruta = totalLucro;
 
                   return GridView.count(
-                    crossAxisCount:
-                    MediaQuery.of(context).size.width > 600 ? 3 : 1,
+                    crossAxisCount: MediaQuery.of(context).size.width > 600 ? 4 : 1,
                     crossAxisSpacing: 16,
                     mainAxisSpacing: 16,
                     children: [
@@ -258,11 +267,19 @@ class _TelaDashboardState extends State<TelaDashboard> {
                         cor2: Colors.blue.shade700,
                         icone: Icons.bar_chart,
                       ),
+                      _buildCard(
+                        titulo: "Comissão dos Garçons",
+                        valor: "R\$ ${totalComissao.toStringAsFixed(2)}",
+                        cor1: Colors.purple.shade400,
+                        cor2: Colors.purple.shade700,
+                        icone: Icons.account_circle,
+                      ),
                     ],
                   );
                 },
               ),
             ),
+
           ],
         ),
       ),
