@@ -86,9 +86,7 @@ class TelaContasAtivas extends StatelessWidget {
                 child: ListTile(
                   title: Text("Mesa $mesa"),
                   subtitle: Text(
-                    "Subtotal: R\$ ${subtotal.toStringAsFixed(2)}\n"
                         "Pedidos: ${pedidos.length}\n"
-                        "Taxa de Serviço: ${taxa ? 'Sim' : 'Não'}",
                   ),
                   trailing: Column(
                     children: [
