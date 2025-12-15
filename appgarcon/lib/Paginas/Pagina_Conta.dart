@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 
 import '../Modelos/Itens.dart';
 import 'Pagina_Pagamento.dart';
+import 'Pagina_Pagamento_Aprovado.dart'; // ✅ NECESSÁRIO
 
 class PaginaConta extends StatefulWidget {
   final int numeroMesa;
@@ -35,7 +36,7 @@ class _PaginaContaState extends State<PaginaConta> {
   }
 
   // =====================================================
-  // 🔵 CARREGAR PEDIDOS + TAXA DE SERVIÇO SALVA NO BANCO
+  // 🔵 CARREGAR PEDIDOS + TAXA SALVA
   // =====================================================
   Future<void> carregarPedidos() async {
     setState(() => carregando = true);
@@ -54,7 +55,6 @@ class _PaginaContaState extends State<PaginaConta> {
     final data = contaSnap.data()!;
     final pedidosIds = List<String>.from(data['pedidos'] ?? []);
 
-    // 🔥 Carrega a taxa de serviço salva no Firestore
     addService = data['taxaDeServico'] ?? true;
 
     if (pedidosIds.isEmpty) {
@@ -71,15 +71,13 @@ class _PaginaContaState extends State<PaginaConta> {
       final p = await db.collection('pedidos').doc(id).get();
       if (p.exists) {
         final d = p.data()!;
-        temp.add(
-          Item(
-            d['nomeProduto'] ?? '',
-            1,
-            _toDouble(d['preco']),
-            '',
-            d['descricao'] ?? '',
-          ),
-        );
+        temp.add(Item(
+          d['nomeProduto'] ?? '',
+          1,
+          _toDouble(d['preco']),
+          '',
+          d['descricao'] ?? '',
+        ));
       }
     }
 
@@ -109,7 +107,7 @@ class _PaginaContaState extends State<PaginaConta> {
   }
 
   // =====================================================
-  // 🔵 GERAR PIX
+  // 🔵 CRIAR PIX
   // =====================================================
   Future<Map<String, dynamic>> criarPagamentoPix(double valor) async {
     final url = Uri.parse(
@@ -119,9 +117,7 @@ class _PaginaContaState extends State<PaginaConta> {
     final resp = await http.post(
       url,
       headers: {"Content-Type": "application/json"},
-      body: jsonEncode({
-        "valor": double.parse(valor.toStringAsFixed(2)),
-      }),
+      body: jsonEncode({"valor": valor}),
     );
 
     if (resp.statusCode == 200) {
@@ -134,8 +130,7 @@ class _PaginaContaState extends State<PaginaConta> {
   double _toDouble(dynamic v) =>
       v is int ? v.toDouble() : (v is double ? v : 0.0);
 
-  double subtotal() =>
-      items.fold(0.0, (s, it) => s + it.qty * it.price);
+  double subtotal() => items.fold(0.0, (s, it) => s + it.qty * it.price);
 
   double service() => addService ? subtotal() * 0.10 : 0.0;
 
@@ -148,19 +143,8 @@ class _PaginaContaState extends State<PaginaConta> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          "Mesa $numeroMesa - Resumo do Pedido",
-          style: const TextStyle(fontSize: 15),
-        ),
-        centerTitle: true,
+        title: Text("Mesa $numeroMesa - Resumo do Pedido"),
         backgroundColor: const Color(0xFF448AFF),
-        toolbarHeight: 50,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: carregarPedidos,
-          ),
-        ],
       ),
       body: carregando
           ? const Center(child: CircularProgressIndicator())
@@ -170,9 +154,7 @@ class _PaginaContaState extends State<PaginaConta> {
             children: [
               _listaProdutos(),
               _totais(),
-              SizedBox(
-                height: MediaQuery.of(context).padding.bottom + 16,
-              ),
+              const SizedBox(height: 20),
             ],
           ),
         ),
@@ -181,7 +163,7 @@ class _PaginaContaState extends State<PaginaConta> {
   }
 
   // =====================================================
-  // 🔵 LISTA DE PRODUTOS
+  // 🔵 LISTA
   // =====================================================
   Widget _listaProdutos() {
     return Container(
@@ -202,62 +184,30 @@ class _PaginaContaState extends State<PaginaConta> {
         children: [
           Row(
             children: const [
-              Expanded(
-                flex: 3,
-                child: Text("Produto",
-                    style: TextStyle(fontWeight: FontWeight.bold)),
-              ),
-              Expanded(
-                flex: 2,
-                child: Text("Qtd",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontWeight: FontWeight.bold)),
-              ),
-              Expanded(
-                flex: 2,
-                child: Text("Unitário",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontWeight: FontWeight.bold)),
-              ),
-              Expanded(
-                flex: 2,
-                child: Text("Total",
-                    textAlign: TextAlign.right,
-                    style: TextStyle(fontWeight: FontWeight.bold)),
-              ),
+              Expanded(flex: 3, child: Text("Produto", style: TextStyle(fontWeight: FontWeight.bold))),
+              Expanded(flex: 2, child: Text("Qtd", textAlign: TextAlign.center)),
+              Expanded(flex: 2, child: Text("Unitário", textAlign: TextAlign.center)),
+              Expanded(flex: 2, child: Text("Total", textAlign: TextAlign.right)),
             ],
           ),
-          const Divider(height: 16),
-
+          const Divider(),
           SizedBox(
             height: 230,
             child: ListView.separated(
               itemCount: items.length,
-              separatorBuilder: (_, __) => const Divider(height: 16),
+              separatorBuilder: (_, __) => const Divider(),
               itemBuilder: (_, i) {
                 final it = items[i];
                 return Row(
                   children: [
-                    Expanded(
-                        flex: 3,
-                        child: Text(it.name,
-                            style: const TextStyle(fontSize: 16))),
-                    Expanded(
-                        flex: 2,
-                        child: Text('${it.qty}',
-                            textAlign: TextAlign.center)),
-                    Expanded(
-                        flex: 2,
-                        child: Text(
-                            'R\$ ${it.price.toStringAsFixed(2)}',
-                            textAlign: TextAlign.center)),
+                    Expanded(flex: 3, child: Text(it.name)),
+                    Expanded(flex: 2, child: Text("${it.qty}", textAlign: TextAlign.center)),
+                    Expanded(flex: 2, child: Text("R\$ ${it.price.toStringAsFixed(2)}", textAlign: TextAlign.center)),
                     Expanded(
                       flex: 2,
                       child: Text(
-                        'R\$ ${(it.qty * it.price).toStringAsFixed(2)}',
+                        "R\$ ${(it.qty * it.price).toStringAsFixed(2)}",
                         textAlign: TextAlign.right,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w600),
                       ),
                     ),
                   ],
@@ -271,7 +221,7 @@ class _PaginaContaState extends State<PaginaConta> {
   }
 
   // =====================================================
-  // 🔵 TOTAIS + PIX + SALVAR TAXA
+  // 🔵 TOTAIS + PAGAMENTOS
   // =====================================================
   Widget _totais() {
     return Padding(
@@ -280,23 +230,12 @@ class _PaginaContaState extends State<PaginaConta> {
         children: [
           Row(
             children: [
-              const Expanded(
-                child: Text(
-                  'Adicionar taxa de serviço (10%)',
-                  style: TextStyle(fontSize: 16),
-                ),
-              ),
-
-              // 🔥 Agora o switch salva no Firestore!
+              const Expanded(child: Text("Adicionar taxa de serviço (10%)", style: TextStyle(fontSize: 16))),
               Switch(
                 value: addService,
                 onChanged: (v) async {
                   setState(() => addService = v);
-
-                  await db
-                      .collection('contas')
-                      .doc('mesa_$numeroMesa')
-                      .set({
+                  await db.collection('contas').doc('mesa_$numeroMesa').set({
                     'taxaDeServico': v,
                     'lastActivity': FieldValue.serverTimestamp(),
                   }, SetOptions(merge: true));
@@ -305,44 +244,32 @@ class _PaginaContaState extends State<PaginaConta> {
             ],
           ),
 
-          const SizedBox(height: 8),
-          _linhaValor('Subtotal', subtotal()),
-          _linhaValor('Taxa de serviço', service()),
+          _linhaValor("Subtotal", subtotal()),
+          _linhaValor("Taxa de serviço", service()),
           const Divider(),
-          _linhaValor('Total', total(), isTotal: true),
+          _linhaValor("Total", total(), isTotal: true),
           const SizedBox(height: 16),
 
+          // ---------- BOTÃO PIX ----------
           SizedBox(
             width: double.infinity,
             height: 48,
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF448AFF),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                elevation: 4,
+                backgroundColor: Colors.blue,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
-
               onPressed: items.isEmpty
                   ? null
                   : () async {
                 showDialog(
                   context: context,
                   barrierDismissible: false,
-                  builder: (_) =>
-                  const Center(child: CircularProgressIndicator()),
+                  builder: (_) => const Center(child: CircularProgressIndicator()),
                 );
 
                 try {
-                  // 🔥 Salva taxa antes do pagamento
-                  await db.collection('contas').doc('mesa_$numeroMesa').set({
-                    'taxaDeServico': addService,
-                    'lastActivity': FieldValue.serverTimestamp(),
-                  }, SetOptions(merge: true));
-
                   final pix = await criarPagamentoPix(total());
-
                   Navigator.pop(context);
 
                   Navigator.push(
@@ -356,7 +283,7 @@ class _PaginaContaState extends State<PaginaConta> {
                         idPagamento: pix["id"].toString(),
                       ),
                     ),
-                  ).then((_) => carregarPedidos());
+                  );
                 } catch (e) {
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -364,17 +291,85 @@ class _PaginaContaState extends State<PaginaConta> {
                   );
                 }
               },
+              child: const Text("Pagar com Pix", style: TextStyle(fontSize: 16, color: Colors.white)),
+            ),
+          ),
 
+          const SizedBox(height: 12),
+
+          // ---------- BOTÃO PAGAMENTO MANUAL ----------
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: items.isEmpty ? null : () async => await _pagarManual(),
               child: const Text(
-                'Confirmar e ir para pagamento',
-                style: TextStyle(
-                    fontSize: 16,
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold),
+                "Pagar com Cartão ou Dinheiro",
+                style: TextStyle(fontSize: 16, color: Colors.white),
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // =====================================================
+  // 🔥 PAGAMENTO MANUAL
+  // =====================================================
+  Future<void> _pagarManual() async {
+    final contaRef = db.collection("contas").doc("mesa_$numeroMesa");
+    final snap = await contaRef.get();
+    if (!snap.exists) return;
+
+    final data = snap.data()!;
+    final subtotal = (data["total"] ?? 0).toDouble();
+    final custoTotal = (data["custoTotal"] ?? 0).toDouble();
+    final taxa = data["taxaDeServico"] ?? true;
+    final pedidos = List<String>.from(data["pedidos"] ?? []);
+
+    final valorTaxa = taxa ? subtotal * 0.10 : 0.0;
+    final totalFinal = subtotal + valorTaxa;
+
+    await db.collection("historico_contas").add({
+      "mesaNumero": numeroMesa,
+      "pedidos": pedidos,
+      "subtotal": subtotal,
+      "taxaDeServico": taxa,
+      "valorTaxa": valorTaxa,
+      "totalFinal": totalFinal,
+      "custoTotal": custoTotal,
+      "lucro": totalFinal - custoTotal,
+      "status": "paga",
+      "timestamp_fechamento": FieldValue.serverTimestamp(),
+    });
+
+    for (final id in pedidos) {
+      await db.collection("pedidos").doc(id).update({
+        "status": -1,
+        "archivedAt": FieldValue.serverTimestamp(),
+      });
+    }
+
+    await contaRef.set({
+      "mesaNumero": numeroMesa,
+      "pedidos": [],
+      "total": 0.0,
+      "custoTotal": 0.0,
+      "taxaDeServico": false,
+      "status": "fechada",
+      "status_pagamento": "aprovado",
+      "resetAt": FieldValue.serverTimestamp(),
+    });
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PaginaPagamentoAprovado(numeroMesa: numeroMesa),
       ),
     );
   }
@@ -389,15 +384,15 @@ class _PaginaContaState extends State<PaginaConta> {
               titulo,
               style: TextStyle(
                 fontSize: isTotal ? 18 : 16,
-                fontWeight: isTotal ? FontWeight.w700 : FontWeight.w500,
+                fontWeight: isTotal ? FontWeight.bold : FontWeight.w500,
               ),
             ),
           ),
           Text(
-            'R\$ ${valor.toStringAsFixed(2)}',
+            "R\$ ${valor.toStringAsFixed(2)}",
             style: TextStyle(
               fontSize: isTotal ? 18 : 16,
-              fontWeight: isTotal ? FontWeight.w700 : FontWeight.w500,
+              fontWeight: isTotal ? FontWeight.bold : FontWeight.w500,
             ),
           ),
         ],

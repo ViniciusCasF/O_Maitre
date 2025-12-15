@@ -7,8 +7,7 @@
     <list default="true" id="b9faa361-18ff-4752-baa7-6e16696d11a8" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/appgarcon/lib/Paginas/Pagina_Conta.dart" beforeDir="false" afterPath="$PROJECT_DIR$/appgarcon/lib/Paginas/Pagina_Conta.dart" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/appgarcon/lib/Paginas/Pagina_Pagamento.dart" beforeDir="false" afterPath="$PROJECT_DIR$/appgarcon/lib/Paginas/Pagina_Pagamento.dart" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/appgarcon/lib/Paginas/Pagina_Pedidos.dart" beforeDir="false" afterPath="$PROJECT_DIR$/appgarcon/lib/Paginas/Pagina_Pedidos.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/appgarcon/lib/Paginas/Pagina_Pagamento_Aprovado.dart" beforeDir="false" afterPath="$PROJECT_DIR$/appgarcon/lib/Paginas/Pagina_Pagamento_Aprovado.dart" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/appgarcon/linux/flutter/generated_plugin_registrant.cc" beforeDir="false" afterPath="$PROJECT_DIR$/appgarcon/linux/flutter/generated_plugin_registrant.cc" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/appgarcon/linux/flutter/generated_plugin_registrant.h" beforeDir="false" afterPath="$PROJECT_DIR$/appgarcon/linux/flutter/generated_plugin_registrant.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/appgarcon/linux/flutter/generated_plugins.cmake" beforeDir="false" afterPath="$PROJECT_DIR$/appgarcon/linux/flutter/generated_plugins.cmake" afterDir="false" />
