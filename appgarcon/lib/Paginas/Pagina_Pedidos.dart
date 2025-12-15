@@ -138,26 +138,44 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
 
       for (var item in order.items) {
         final tipoProduto = await obterTipoProduto(item.name);
-        final int statusInicial =
-        tipoProduto == 'garcom' ? 1 : 2;
+        final int statusInicial = tipoProduto == 'garcom' ? 1 : 2;
 
+        // Buscar preço e produtoId
+        final prodQuery = await db
+            .collection("produtos")
+            .where("nome", isEqualTo: item.name)
+            .limit(1)
+            .get();
+
+        if (prodQuery.docs.isEmpty) {
+          throw Exception("Produto '${item.name}' não encontrado na coleção produtos.");
+        }
+
+        final prodDoc = prodQuery.docs.first;
+        final String produtoId = prodDoc.id;
+        final double preco = (prodDoc["preco"] ?? 0).toDouble();
+
+        // Calcular custo de insumos (correto!)
+        final double custoInsumos = await calcularCustoInsumos(item.name);
+
+        // Criar os pedidos (um por quantidade)
         for (int i = 0; i < item.qty; i++) {
           final doc = await pedidosRef.add({
+            'produtoId': produtoId,
             'nomeProduto': item.name,
-            'mesa': numeroMesa,
             'descricao': item.description ?? '',
+            'mesa': numeroMesa,
+            'preco': preco,            // ✔ AGORA EXISTE
+            'custoInsumos': custoInsumos,
             'status': statusInicial,
-            'tipo': tipoProduto, // opcional, mas recomendado
+            'tipo': tipoProduto,
             'startTime': FieldValue.serverTimestamp(),
           });
-
-          final custoInsumos =
-          await calcularCustoInsumos(item.name);
 
           await contaManager.adicionarPedido(
             numeroMesa,
             doc.id,
-            item.price,
+            preco,                   // ✔ preço correto para a conta
             custoInsumos: custoInsumos,
           );
         }
@@ -179,6 +197,7 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
       if (mounted) setState(() => enviando = false);
     }
   }
+
 
   // =================================================
   // 🎉 POPUP

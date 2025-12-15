@@ -98,25 +98,33 @@ class _PaginaPagamentoState extends State<PaginaPagamento> {
     final double totalVenda = (data["total"] ?? 0.0).toDouble();
     final double custoTotal = (data["custoTotal"] ?? 0.0).toDouble();
     final List<String> pedidos = List<String>.from(data["pedidos"] ?? []);
+    final bool taxaServico = data["taxaDeServico"] ?? true;
+
+    // 🔥 Calcular taxa de serviço e total final
+    final double valorTaxa = taxaServico ? totalVenda * 0.10 : 0.0;
+    final double totalFinal = totalVenda + valorTaxa;
 
     print("🔵 Arquivando conta:");
-    print(" - totalVenda = $totalVenda");
-    print(" - custoTotal = $custoTotal");
-    print(" - lucro = ${totalVenda - custoTotal}");
-    print(" - pedidos = $pedidos");
+    print("Subtotal = $totalVenda");
+    print("Taxa serviço: $taxaServico -> R\$ $valorTaxa");
+    print("Total final: R\$ $totalFinal");
+    print("Lucro = ${totalFinal - custoTotal}");
 
-    // 🔥 ARQUIVA NO historico_contas
+    // 🔥 SALVAR NO HISTÓRICO
     await db.collection("historico_contas").add({
       "mesaNumero": widget.numeroMesa,
       "pedidos": pedidos,
-      "totalVenda": totalVenda,
+      "subtotal": totalVenda,
+      "taxaDeServico": taxaServico,
+      "valorTaxa": valorTaxa,
+      "totalFinal": totalFinal,
       "custoTotal": custoTotal,
-      "lucro": totalVenda - custoTotal,
+      "lucro": totalFinal - custoTotal,
       "status": "paga",
       "timestamp_fechamento": FieldValue.serverTimestamp(),
     });
 
-    // 🔥 MARCAR pedidos como arquivados
+    // 🔥 MARCAR pedidos individualmente
     for (final id in pedidos) {
       await db.collection("pedidos").doc(id).update({
         "status": -1,
@@ -130,6 +138,7 @@ class _PaginaPagamentoState extends State<PaginaPagamento> {
       "pedidos": [],
       "total": 0.0,
       "custoTotal": 0.0,
+      "taxaDeServico": false,
       "status": "fechada",
       "status_pagamento": "aprovado",
       "resetAt": FieldValue.serverTimestamp(),
@@ -137,6 +146,7 @@ class _PaginaPagamentoState extends State<PaginaPagamento> {
 
     print("✅ Conta arquivada e resetada com sucesso!");
   }
+
 
 
 

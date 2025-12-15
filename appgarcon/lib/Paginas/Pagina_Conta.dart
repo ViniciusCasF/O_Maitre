@@ -34,9 +34,9 @@ class _PaginaContaState extends State<PaginaConta> {
     carregarPedidos();
   }
 
-  // ===============================
-  // 🔵 CARREGAR PEDIDOS DA CONTA
-  // ===============================
+  // =====================================================
+  // 🔵 CARREGAR PEDIDOS + TAXA DE SERVIÇO SALVA NO BANCO
+  // =====================================================
   Future<void> carregarPedidos() async {
     setState(() => carregando = true);
 
@@ -51,8 +51,11 @@ class _PaginaContaState extends State<PaginaConta> {
       return;
     }
 
-    final pedidosIds =
-    List<String>.from(contaSnap.data()?['pedidos'] ?? []);
+    final data = contaSnap.data()!;
+    final pedidosIds = List<String>.from(data['pedidos'] ?? []);
+
+    // 🔥 Carrega a taxa de serviço salva no Firestore
+    addService = data['taxaDeServico'] ?? true;
 
     if (pedidosIds.isEmpty) {
       setState(() {
@@ -100,13 +103,14 @@ class _PaginaContaState extends State<PaginaConta> {
           desc[e.key] ?? '',
         );
       }).toList();
+
       carregando = false;
     });
   }
 
-  // ===============================
-  // 🔵 PIX – GERA PAGAMENTO
-  // ===============================
+  // =====================================================
+  // 🔵 GERAR PIX
+  // =====================================================
   Future<Map<String, dynamic>> criarPagamentoPix(double valor) async {
     final url = Uri.parse(
       "https://us-central1-o-maitre.cloudfunctions.net/api/pix",
@@ -137,9 +141,9 @@ class _PaginaContaState extends State<PaginaConta> {
 
   double total() => subtotal() + service();
 
-  // ===============================
-  // 🔵 UI
-  // ===============================
+  // =====================================================
+  // 🔵 UI PRINCIPAL
+  // =====================================================
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -167,8 +171,7 @@ class _PaginaContaState extends State<PaginaConta> {
               _listaProdutos(),
               _totais(),
               SizedBox(
-                height:
-                MediaQuery.of(context).padding.bottom + 16,
+                height: MediaQuery.of(context).padding.bottom + 16,
               ),
             ],
           ),
@@ -177,9 +180,9 @@ class _PaginaContaState extends State<PaginaConta> {
     );
   }
 
-  // ===============================
+  // =====================================================
   // 🔵 LISTA DE PRODUTOS
-  // ===============================
+  // =====================================================
   Widget _listaProdutos() {
     return Container(
       margin: const EdgeInsets.all(16),
@@ -225,12 +228,12 @@ class _PaginaContaState extends State<PaginaConta> {
             ],
           ),
           const Divider(height: 16),
+
           SizedBox(
             height: 230,
             child: ListView.separated(
               itemCount: items.length,
-              separatorBuilder: (_, __) =>
-              const Divider(height: 16),
+              separatorBuilder: (_, __) => const Divider(height: 16),
               itemBuilder: (_, i) {
                 final it = items[i];
                 return Row(
@@ -238,8 +241,7 @@ class _PaginaContaState extends State<PaginaConta> {
                     Expanded(
                         flex: 3,
                         child: Text(it.name,
-                            style:
-                            const TextStyle(fontSize: 16))),
+                            style: const TextStyle(fontSize: 16))),
                     Expanded(
                         flex: 2,
                         child: Text('${it.qty}',
@@ -268,9 +270,9 @@ class _PaginaContaState extends State<PaginaConta> {
     );
   }
 
-  // ===============================
-  // 🔵 TOTAIS + BOTÃO PIX
-  // ===============================
+  // =====================================================
+  // 🔵 TOTAIS + PIX + SALVAR TAXA
+  // =====================================================
   Widget _totais() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -284,19 +286,32 @@ class _PaginaContaState extends State<PaginaConta> {
                   style: TextStyle(fontSize: 16),
                 ),
               ),
+
+              // 🔥 Agora o switch salva no Firestore!
               Switch(
                 value: addService,
-                onChanged: (v) =>
-                    setState(() => addService = v),
+                onChanged: (v) async {
+                  setState(() => addService = v);
+
+                  await db
+                      .collection('contas')
+                      .doc('mesa_$numeroMesa')
+                      .set({
+                    'taxaDeServico': v,
+                    'lastActivity': FieldValue.serverTimestamp(),
+                  }, SetOptions(merge: true));
+                },
               ),
             ],
           ),
+
           const SizedBox(height: 8),
           _linhaValor('Subtotal', subtotal()),
           _linhaValor('Taxa de serviço', service()),
           const Divider(),
           _linhaValor('Total', total(), isTotal: true),
           const SizedBox(height: 16),
+
           SizedBox(
             width: double.infinity,
             height: 48,
@@ -308,19 +323,25 @@ class _PaginaContaState extends State<PaginaConta> {
                 ),
                 elevation: 4,
               ),
+
               onPressed: items.isEmpty
                   ? null
                   : () async {
                 showDialog(
                   context: context,
                   barrierDismissible: false,
-                  builder: (_) => const Center(
-                      child: CircularProgressIndicator()),
+                  builder: (_) =>
+                  const Center(child: CircularProgressIndicator()),
                 );
 
                 try {
-                  final pix =
-                  await criarPagamentoPix(total());
+                  // 🔥 Salva taxa antes do pagamento
+                  await db.collection('contas').doc('mesa_$numeroMesa').set({
+                    'taxaDeServico': addService,
+                    'lastActivity': FieldValue.serverTimestamp(),
+                  }, SetOptions(merge: true));
+
+                  final pix = await criarPagamentoPix(total());
 
                   Navigator.pop(context);
 
@@ -330,8 +351,7 @@ class _PaginaContaState extends State<PaginaConta> {
                       builder: (_) => PaginaPagamento(
                         numeroMesa: numeroMesa,
                         total: total(),
-                        qrCodeBase64:
-                        pix["qr_code_base64"],
+                        qrCodeBase64: pix["qr_code_base64"],
                         copiaECola: pix["copia_e_cola"],
                         idPagamento: pix["id"].toString(),
                       ),
@@ -339,37 +359,18 @@ class _PaginaContaState extends State<PaginaConta> {
                   ).then((_) => carregarPedidos());
                 } catch (e) {
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context)
-                      .showSnackBar(
-                    SnackBar(
-                        content: Text(
-                            "Erro ao gerar PIX: $e")),
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text("Erro ao gerar PIX: $e")),
                   );
                 }
               },
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  const Text(
-                    'Confirmar e ir para pagamento',
-                    style: TextStyle(
-                        fontSize: 16,
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold),
-                  ),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: 12),
-                      child: Image.asset(
-                        'assets/images/pix.jpg',
-                        height: 24,
-                        width: 24,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ],
+
+              child: const Text(
+                'Confirmar e ir para pagamento',
+                style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold),
               ),
             ),
           ),
@@ -378,8 +379,7 @@ class _PaginaContaState extends State<PaginaConta> {
     );
   }
 
-  Widget _linhaValor(String titulo, double valor,
-      {bool isTotal = false}) {
+  Widget _linhaValor(String titulo, double valor, {bool isTotal = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -389,8 +389,7 @@ class _PaginaContaState extends State<PaginaConta> {
               titulo,
               style: TextStyle(
                 fontSize: isTotal ? 18 : 16,
-                fontWeight:
-                isTotal ? FontWeight.w700 : FontWeight.w500,
+                fontWeight: isTotal ? FontWeight.w700 : FontWeight.w500,
               ),
             ),
           ),
@@ -398,8 +397,7 @@ class _PaginaContaState extends State<PaginaConta> {
             'R\$ ${valor.toStringAsFixed(2)}',
             style: TextStyle(
               fontSize: isTotal ? 18 : 16,
-              fontWeight:
-              isTotal ? FontWeight.w700 : FontWeight.w500,
+              fontWeight: isTotal ? FontWeight.w700 : FontWeight.w500,
             ),
           ),
         ],
