@@ -120,18 +120,23 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
       await contaManager.abrirOuCriarConta(numeroMesa);
 
       for (var item in order.items) {
+        final tipoProduto = await obterTipoProduto(item.name);
+        final int statusInicial =
+        tipoProduto == 'garcom' ? 1 : 2;
+
         for (int i = 0; i < item.qty; i++) {
           final doc = await pedidosRef.add({
             'nomeProduto': item.name,
             'mesa': numeroMesa,
             'descricao': item.description ?? '',
             'preco': item.price,
-            'status': 1,
+            'status': statusInicial, // ✅ AGORA CORRETO
+            'tipo': tipoProduto,     // opcional, mas recomendado
             'startTime': FieldValue.serverTimestamp(),
           });
 
-          // custo dos insumos para 1 unidade do produto
-          final custoInsumos = await calcularCustoInsumos(item.name);
+          final custoInsumos =
+          await calcularCustoInsumos(item.name);
 
           await contaManager.adicionarPedido(
             numeroMesa,
@@ -141,7 +146,6 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
           );
         }
 
-        // redução do estoque total
         await reduzirInsumos(item.name, item.qty);
       }
 
@@ -159,6 +163,25 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
       if (mounted) setState(() => enviando = false);
     }
   }
+
+
+  // -------------------------------------------------------
+// OBTÉM O TIPO DO PRODUTO (garcom / cozinha)
+// -------------------------------------------------------
+  Future<String> obterTipoProduto(String nomeProduto) async {
+    final query = await db
+        .collection('produtos')
+        .where('nome', isEqualTo: nomeProduto)
+        .limit(1)
+        .get();
+
+    if (query.docs.isEmpty) {
+      return 'cozinha'; // padrão seguro
+    }
+
+    return query.docs.first.data()['tipo'] ?? 'cozinha';
+  }
+
 
   // -------------------------------------------------------
   // POPUP
