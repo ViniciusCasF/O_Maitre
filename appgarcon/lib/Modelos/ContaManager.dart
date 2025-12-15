@@ -4,7 +4,8 @@ class ContaManager {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   /// Abre (ou cria) uma conta para a mesa (mesa_{numeroMesa})
-  Future<DocumentReference<Map<String, dynamic>>> abrirOuCriarConta(int numeroMesa) async {
+  Future<DocumentReference<Map<String, dynamic>>> abrirOuCriarConta(
+      int numeroMesa) async {
     final contaRef = _db.collection('contas').doc('mesa_$numeroMesa');
     final snap = await contaRef.get();
 
@@ -15,44 +16,56 @@ class ContaManager {
 
     await contaRef.set({
       'mesaNumero': numeroMesa,
-      'status': 'aberta',                // aberta | paga | fechada
+      'status': 'aberta', // aberta | paga | fechada
       'pedidos': <String>[],
-      'total': 0.0,
+      'total': 0.0,       // total de vendas
+      'custoTotal': 0.0,  // 🔥 custo de insumos
       'startTime': FieldValue.serverTimestamp(),
     });
+
     return contaRef;
   }
 
-  /// Vincula um pedido à conta e atualiza total (preço unitário)
-  Future<void> adicionarPedido(int numeroMesa, String pedidoId, double preco) async {
+  /// Vincula um pedido à conta e atualiza total e custo
+  Future<void> adicionarPedido(
+      int numeroMesa,
+      String pedidoId,
+      double precoVenda, {
+        double custoInsumos = 0.0,
+      }) async {
     final contaRef = _db.collection('contas').doc('mesa_$numeroMesa');
+
     await _db.runTransaction((tx) async {
       final snap = await tx.get(contaRef);
       if (!snap.exists) return;
+
       final data = snap.data()!;
+
       final pedidos = List<String>.from(data['pedidos'] ?? []);
       pedidos.add(pedidoId);
-      final novoTotal = (data['total'] ?? 0.0) + (preco);
+
+      final double novoTotal =
+          (data['total'] ?? 0.0) + precoVenda;
+      final double novoCusto =
+          (data['custoTotal'] ?? 0.0) + custoInsumos;
+
       tx.update(contaRef, {
         'pedidos': pedidos,
         'total': novoTotal,
+        'custoTotal': novoCusto, // 🔥 aqui entra o custo
         'status': 'aberta',
         'lastActivity': FieldValue.serverTimestamp(),
       });
     });
   }
 
-  /// Paga e reseta a conta:
-  /// - NÃO deleta pedidos
-  /// - marca pedidos como status = -1 (arquivados) e archivedAt
-  /// - cria snapshot em contas_archive com valorPago
-  /// - reseta a conta ativa
+  /// Paga e arquiva a conta
   Future<void> pagarConta({
     required int numeroMesa,
-    required double valorPago,          // total final que o cliente pagou (com taxa de serviço etc.)
+    required double valorPago,
   }) async {
     final contaRef = _db.collection('contas').doc('mesa_$numeroMesa');
-    final archiveRef = _db.collection('contas_archive').doc(); // id novo
+    final archiveRef = _db.collection('contas_archive').doc();
 
     await _db.runTransaction((tx) async {
       final snap = await tx.get(contaRef);
@@ -62,51 +75,49 @@ class ContaManager {
 
       final data = Map<String, dynamic>.from(snap.data()!);
 
-      final List<String> pedidos = List<String>.from(data['pedidos'] ?? []);
-      final double totalAtual = (data['total'] ?? 0.0) * 1.0;
+      final pedidos = List<String>.from(data['pedidos'] ?? []);
+      final totalAtual = (data['total'] ?? 0.0);
+      final custoAtual = (data['custoTotal'] ?? 0.0);
 
-      // Marca conta como paga (rastro no doc atual)
       tx.update(contaRef, {
         'status': 'paga',
         'paidAt': FieldValue.serverTimestamp(),
-        'valorPago': valorPago,     // registra no doc atual também
+        'valorPago': valorPago,
       });
 
-      // Cria snapshot no archive
       tx.set(archiveRef, {
         'mesaNumero': numeroMesa,
         'contaRef': contaRef.id,
         'pedidos': pedidos,
         'totalAntes': totalAtual,
+        'custoTotal': custoAtual,
         'valorPago': valorPago,
         'status': 'paga',
         'archivedAt': FieldValue.serverTimestamp(),
       });
-
-      // OBS: não conseguimos fazer update em docs fora desta transação (em alguns cenários web pode falhar),
-      // então marcamos para atualizar fora. Alternativa: criar uma subcoleção "pedidos" espelho no archive.
     });
 
-    // Fora da transação, marque todos os pedidos como arquivados (status = -1) e com referência ao archive.
+    // Arquiva pedidos
     final contaSnap = await contaRef.get();
     final pedidos = List<String>.from(contaSnap.data()?['pedidos'] ?? []);
+
     for (final id in pedidos) {
       try {
         await _db.collection('pedidos').doc(id).update({
-          'status': -1, // ✅ ARQUIVADO
+          'status': -1,
           'archivedAt': FieldValue.serverTimestamp(),
-          // opcional: relacione ao archiveRef.id
           'contaArchiveId': archiveRef.id,
         });
       } catch (_) {}
     }
 
-    // Por fim, reset da conta ativa (sem apagar pedidos)
+    // Reseta conta ativa
     await contaRef.set({
       'mesaNumero': numeroMesa,
       'status': 'fechada',
       'pedidos': <String>[],
       'total': 0.0,
+      'custoTotal': 0.0,
       'resetAt': FieldValue.serverTimestamp(),
     });
   }
