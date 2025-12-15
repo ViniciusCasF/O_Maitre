@@ -99,6 +99,11 @@ class _PaginaPagamentoState extends State<PaginaPagamento> {
     final double custoTotal = (data["custoTotal"] ?? 0.0).toDouble();
     final List<String> pedidos = List<String>.from(data["pedidos"] ?? []);
 
+    final bool taxaDeServico = data["taxaDeServico"] ?? false;
+    final double subtotal = (data["subtotal"] ?? totalVenda).toDouble();
+    final double valorServico = taxaDeServico ? (totalVenda - subtotal) : 0.0;
+    final Timestamp? startTime = data["startTime"];
+
     print("🔵 Arquivando conta:");
     print(" - totalVenda = $totalVenda");
     print(" - custoTotal = $custoTotal");
@@ -109,10 +114,21 @@ class _PaginaPagamentoState extends State<PaginaPagamento> {
     await db.collection("historico_contas").add({
       "mesaNumero": widget.numeroMesa,
       "pedidos": pedidos,
+
+      // valores financeiros
+      "subtotal": subtotal,
       "totalVenda": totalVenda,
       "custoTotal": custoTotal,
       "lucro": totalVenda - custoTotal,
+      "taxaDeServico": taxaDeServico,
+      "valorTaxaServico": valorServico,
+
+      // pagamento
+      "idPagamento": widget.idPagamento,
       "status": "paga",
+
+      // tempos
+      "startTime": startTime,
       "timestamp_fechamento": FieldValue.serverTimestamp(),
     });
 

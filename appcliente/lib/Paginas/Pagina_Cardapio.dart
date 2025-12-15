@@ -6,6 +6,8 @@ import '../Widget/ProdutoCard.dart';
 import 'Pagina_Pedidos.dart';
 import '../Modelos/order_manager.dart';
 import '../Modelos/MesaHelper.dart';
+import 'dart:async';
+
 
 class PaginaCardapio extends StatefulWidget {
   const PaginaCardapio({super.key});
@@ -15,6 +17,9 @@ class PaginaCardapio extends StatefulWidget {
 }
 
 class _PaginaCardapioState extends State<PaginaCardapio> {
+  StreamSubscription<DocumentSnapshot>? _restauranteSub;
+  StreamSubscription<DocumentSnapshot>? _cozinhaSub;
+
   String searchText = '';
   String filtroAtivo = '';
   final OrderManager order = OrderManager();
@@ -29,7 +34,60 @@ class _PaginaCardapioState extends State<PaginaCardapio> {
   void initState() {
     super.initState();
     carregarTudo().then((_) => verificarOuCriarConta());
+    iniciarListenersTempoReal();
   }
+
+  @override
+  void dispose() {
+    _restauranteSub?.cancel();
+    _cozinhaSub?.cancel();
+    super.dispose();
+  }
+
+
+  void iniciarListenersTempoReal() {
+    final firestore = FirebaseFirestore.instance;
+
+    // 🔴 Listener do RESTAURANTE
+    _restauranteSub = firestore
+        .collection('estados')
+        .doc('restaurante')
+        .snapshots()
+        .listen((doc) {
+      if (!doc.exists) return;
+
+      final aberto = doc.data()?['aberto'] == true;
+
+      if (aberto != restauranteAberto) {
+        setState(() {
+          restauranteAberto = aberto;
+        });
+
+        // Atualiza produtos em tempo real
+        carregarProdutos();
+      }
+    });
+
+    // 🍳 Listener da COZINHA
+    _cozinhaSub = firestore
+        .collection('estados')
+        .doc('cozinha')
+        .snapshots()
+        .listen((doc) {
+      if (!doc.exists) return;
+
+      final aberta = doc.data()?['aberta'] == true;
+
+      if (aberta != cozinhaAberta) {
+        setState(() {
+          cozinhaAberta = aberta;
+        });
+
+        carregarProdutos();
+      }
+    });
+  }
+
 
   Future<void> verificarOuCriarConta() async {
     final mesa = MesaHelper.detectarMesa();

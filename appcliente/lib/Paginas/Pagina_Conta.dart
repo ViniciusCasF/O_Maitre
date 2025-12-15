@@ -45,6 +45,10 @@ class _PaginaContaState extends State<PaginaConta> {
     }
 
     if (!contaSnap.exists) {
+      if (contaSnap.exists) {
+        final data = contaSnap.data()!;
+        addService = data['taxaDeServico'] ?? true;
+      }
       setState(() {
         items = [];
         carregando = false;
@@ -243,6 +247,14 @@ class _PaginaContaState extends State<PaginaConta> {
               onPressed: items.isEmpty
                   ? null
                   : () async {
+
+                final contaRef = db.collection('contas').doc('mesa_$numeroMesa');
+
+                await contaRef.set({
+                  "taxaDeServico": addService,
+                  "lastActivity": FieldValue.serverTimestamp(),
+                }, SetOptions(merge: true));
+
                 showDialog(
                   context: context,
                   barrierDismissible: false,
@@ -262,7 +274,8 @@ class _PaginaContaState extends State<PaginaConta> {
                         total: total(),
                         qrCodeBase64: pix["qr_code_base64"],
                         copiaECola: pix["copia_e_cola"],
-                        idPagamento: pix["id"],
+                        idPagamento: pix["id"].toString(),
+
                       ),
                     ),
                   );
@@ -273,6 +286,7 @@ class _PaginaContaState extends State<PaginaConta> {
                   );
                 }
               },
+
               child: const Text(
                 "Confirmar e ir para pagamento",
                 style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold),
