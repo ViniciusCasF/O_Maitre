@@ -95,33 +95,38 @@ class _PaginaPagamentoState extends State<PaginaPagamento> {
 
     final data = snap.data()!;
 
-    final double totalVenda = (data["total"] ?? 0.0).toDouble();
+    // 🔵 Valores extraídos do documento da conta
+    final double subtotal = (data["subtotal"] ?? data["total"] ?? 0.0).toDouble();
     final double custoTotal = (data["custoTotal"] ?? 0.0).toDouble();
-    final List<String> pedidos = List<String>.from(data["pedidos"] ?? []);
-
     final bool taxaDeServico = data["taxaDeServico"] ?? false;
-    final double subtotal = (data["subtotal"] ?? totalVenda).toDouble();
-    final double valorServico = taxaDeServico ? (totalVenda - subtotal) : 0.0;
     final Timestamp? startTime = data["startTime"];
 
-    print("🔵 Arquivando conta:");
-    print(" - totalVenda = $totalVenda");
-    print(" - custoTotal = $custoTotal");
-    print(" - lucro = ${totalVenda - custoTotal}");
-    print(" - pedidos = $pedidos");
+    // 🔥 Calcular taxa e total final
+    final double valorTaxaServico = taxaDeServico ? subtotal * 0.10 : 0.0;
+    final double totalFinal = subtotal + valorTaxaServico;
 
-    // 🔥 ARQUIVA NO historico_contas
+    final List<String> pedidos = List<String>.from(data["pedidos"] ?? []);
+
+    print("🔵 Arquivando conta:");
+    print("Subtotal: $subtotal");
+    print("Taxa Serviço: $taxaDeServico -> R\$ $valorTaxaServico");
+    print("Total Final: R\$ $totalFinal");
+    print("Custo Total: R\$ $custoTotal");
+    print("Lucro Final: R\$ ${totalFinal - custoTotal}");
+
+    // 🔥 ARQUIVAR NO HISTÓRICO
     await db.collection("historico_contas").add({
       "mesaNumero": widget.numeroMesa,
       "pedidos": pedidos,
 
       // valores financeiros
       "subtotal": subtotal,
-      "totalVenda": totalVenda,
-      "custoTotal": custoTotal,
-      "lucro": totalVenda - custoTotal,
       "taxaDeServico": taxaDeServico,
-      "valorTaxaServico": valorServico,
+      "valorTaxaServico": valorTaxaServico,
+      "totalFinal": totalFinal,
+
+      "custoTotal": custoTotal,
+      "lucro": totalFinal - custoTotal,
 
       // pagamento
       "idPagamento": widget.idPagamento,
@@ -132,7 +137,7 @@ class _PaginaPagamentoState extends State<PaginaPagamento> {
       "timestamp_fechamento": FieldValue.serverTimestamp(),
     });
 
-    // 🔥 MARCAR pedidos como arquivados
+    // 🔥 MARCAR pedidos como arquivados individualmente
     for (final id in pedidos) {
       await db.collection("pedidos").doc(id).update({
         "status": -1,
@@ -140,12 +145,14 @@ class _PaginaPagamentoState extends State<PaginaPagamento> {
       });
     }
 
-    // 🔥 RESETAR CONTA
+    // 🔥 RESETAR A CONTA
     await contaRef.set({
       "mesaNumero": widget.numeroMesa,
       "pedidos": [],
+      "subtotal": 0.0,
       "total": 0.0,
       "custoTotal": 0.0,
+      "taxaDeServico": false,
       "status": "fechada",
       "status_pagamento": "aprovado",
       "resetAt": FieldValue.serverTimestamp(),
@@ -153,6 +160,7 @@ class _PaginaPagamentoState extends State<PaginaPagamento> {
 
     print("✅ Conta arquivada e resetada com sucesso!");
   }
+
 
 
 
